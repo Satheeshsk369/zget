@@ -17,12 +17,12 @@ const UnionField = struct {
 fn getUnionFields(comptime U: type) []const UnionField {
     comptime {
         const info = @typeInfo(U).@"union";
-        var fields: [info.field_names.len]UnionField = undefined;
-        for (info.field_names, 0..) |name, i| {
+        var fields: [info.fields.len]UnionField = undefined;
+        for (info.fields, 0..) |f, i| {
             fields[i] = .{
-                .name = name,
-                .type = info.field_types[i],
-                .alignment = info.field_attrs[i].@"align",
+                .name = f.name,
+                .type = f.type,
+                .alignment = f.alignment,
             };
         }
         const frozen = fields;
@@ -43,14 +43,14 @@ pub fn toUnion(comptime fields: []const UnionField) type {
         @setEvalBranchQuota(@max(2000, fields.len * 20));
         var names: [fields.len][:0]const u8 = undefined;
         var types: [fields.len]type = undefined;
-        var attrs: [fields.len]std.builtin.Type.Union.FieldAttributes = undefined;
+        var attrs: [fields.len]std.builtin.Type.UnionField.Attributes = undefined;
         var values: [fields.len]u16 = undefined;
 
         for (fields, 0..) |f, i| {
             names[i] = f.name;
             types[i] = f.type;
             attrs[i] = .{ .@"align" = f.alignment };
-            values[i] = i;
+            values[i] = @intCast(i);
         }
 
         const Tag = @Enum(u16, .exhaustive, &names, &values);
@@ -63,7 +63,7 @@ pub fn toStruct(comptime fields: []const StructField) type {
         @setEvalBranchQuota(@max(2000, fields.len * 20));
         var names: [fields.len][:0]const u8 = undefined;
         var types: [fields.len]type = undefined;
-        var attrs: [fields.len]std.builtin.Type.Struct.FieldAttributes = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
 
         for (fields, 0..) |f, i| {
             names[i] = f.name;
@@ -84,19 +84,19 @@ pub fn Set(comptime Universe: ?type) type {
         pub const universe = Universe orelse @as(type, union(enum) {});
 
         pub fn cardinality(comptime U: type) usize {
-            return @typeInfo(U).@"union".field_names.len;
+            return @typeInfo(U).@"union".fields.len;
         }
 
         pub fn enumToUnion(comptime E: type, comptime T: type) type {
             comptime {
                 const info = @typeInfo(E);
                 if (info != .@"enum") @compileError("enumToUnion expects an enum type, got: " ++ @typeName(E));
-                const len = info.@"enum".field_names.len;
+                const len = info.@"enum".fields.len;
                 var names: [len][:0]const u8 = undefined;
                 var types: [len]type = undefined;
-                var attrs: [len]std.builtin.Type.Union.FieldAttributes = undefined;
-                for (info.@"enum".field_names, 0..) |name, i| {
-                    names[i] = name;
+                var attrs: [len]std.builtin.Type.UnionField.Attributes = undefined;
+                for (info.@"enum".fields, 0..) |f, i| {
+                    names[i] = f.name;
                     types[i] = T;
                     attrs[i] = .{ .@"align" = @alignOf(T) };
                 }
@@ -189,16 +189,16 @@ pub fn Set(comptime Universe: ?type) type {
                 const info1 = @typeInfo(E1);
                 const info2 = @typeInfo(E2);
                 if (info1 != .@"enum" or info2 != .@"enum") @compileError("cartesianProduct expects two enum types");
-                const len1 = info1.@"enum".field_names.len;
-                const len2 = info2.@"enum".field_names.len;
+                const len1 = info1.@"enum".fields.len;
+                const len2 = info2.@"enum".fields.len;
                 const total = len1 * len2;
                 var names: [total][:0]const u8 = undefined;
                 var values: [total]u16 = undefined;
                 var index: usize = 0;
-                for (info1.@"enum".field_names) |f1| {
-                    for (info2.@"enum".field_names) |f2| {
-                        names[index] = f1 ++ options.separator ++ f2;
-                        values[index] = index;
+                for (info1.@"enum".fields) |f1| {
+                    for (info2.@"enum".fields) |f2| {
+                        names[index] = f1.name ++ options.separator ++ f2.name;
+                        values[index] = @intCast(index);
                         index += 1;
                     }
                 }

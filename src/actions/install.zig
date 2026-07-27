@@ -123,8 +123,11 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
     {
         var idx = Schema.Index.init(ctx.gpa, ctx.io, ctx.environMap);
         defer idx.deinit();
-        var downloader = dl.Downloader.init(&idx.client);
 
+        var dl_client = std.http.Client{ .allocator = ctx.gpa, .io = ctx.io };
+        dl_client.initDefaultProxies(ctx.gpa, ctx.environMap) catch {};
+        defer dl_client.deinit();
+        var downloader = dl.Downloader.init(&dl_client);
         var split = std.mem.splitBackwardsAny(u8, src.tarball, "/");
         const filename = split.first();
 

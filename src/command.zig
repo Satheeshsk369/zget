@@ -51,18 +51,18 @@ pub const Entry = struct { verb: []const u8, argLabel: ?[]const u8, description:
 fn appendEntries(comptime G: type, comptime out: []Entry, comptime start: usize) usize {
     var i = start;
     const info = @typeInfo(G.Type).@"enum";
-    for (info.field_names, info.field_values) |name, val| {
-        const v: G.Type = @enumFromInt(val);
-        const label = if (std.mem.eql(u8, name, "list")) "<MIRROR>" else G.argLabel;
-        out[i] = .{ .verb = name, .argLabel = label, .description = v.info() };
+    for (info.fields) |f| {
+        const v: G.Type = @enumFromInt(f.value);
+        const label = if (std.mem.eql(u8, f.name, "list")) "<MIRROR>" else G.argLabel;
+        out[i] = .{ .verb = f.name, .argLabel = label, .description = v.info() };
         i += 1;
     }
     return i;
 }
 
 pub const commands: []const Entry = blk: {
-    const n = @typeInfo(A).@"enum".field_names.len +
-        @typeInfo(C).@"enum".field_names.len;
+    const n = @typeInfo(A).@"enum".fields.len +
+        @typeInfo(C).@"enum".fields.len;
     var out: [n]Entry = undefined;
     var i: usize = 0;
     i = appendEntries(GroupA, &out, i);
