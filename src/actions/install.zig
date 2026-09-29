@@ -214,14 +214,61 @@ fn patchElfForTermux(ctx: action.Context, install_dir: []const u8) !void {
     var bin_file = dir.openFile(ctx.io, "zig", .{ .mode = .read_write }) catch return;
     defer bin_file.close(ctx.io);
 
-    var header: [18]u8 = undefined;
-    var reader = bin_file.reader(ctx.io, &.{});
-    reader.interface.readSliceAll(&header) catch return;
+    var elf_buf: [64]u8 = undefined;
+    _ = bin_file.readPositionalAll(ctx.io, &elf_buf, 0) catch return;
 
-    if (!std.mem.eql(u8, header[0..4], "\x7fELF")) return;
+    if (!std.mem.eql(u8, elf_buf[0..4], "\x7fELF")) return;
 
-    if (header[16] == 2) {
+    const is_64 = elf_buf[4] == 2;
+    const is_le = elf_buf[5] == 1;
+
+    const e_type = if (is_le) std.mem.readInt(u16, elf_buf[16..18], .little) else std.mem.readInt(u16, elf_buf[16..18], .big);
+    if (e_type == 2) {
         try bin_file.writePositionalAll(ctx.io, &[_]u8{3}, 16);
-        std.log.info("Applied Termux ELF PIE patch to {s}/zig", .{install_dir});
+    }
+
+    const min_align: u64 = if (is_64) 64 else 32;
+    if (is_64) {
+        const e_phoff = if (is_le) std.mem.readInt(u64, elf_buf[32..40], .little) else std.mem.readInt(u64, elf_buf[32..40], .big);
+        const e_phentsize = if (is_le) std.mem.readInt(u16, elf_buf[54..56], .little) else std.mem.readInt(u16, elf_buf[54..56], .big);
+        const e_phnum = if (is_le) std.mem.readInt(u16, elf_buf[56..58], .little) else std.mem.readInt(u16, elf_buf[56..58], .big);
+
+        var i: usize = 0;
+        while (i < e_phnum) : (i += 1) {
+            const ph_pos = e_phoff + i * e_phentsize;
+            var ph_buf: [56]u8 = undefined;
+            _ = bin_file.readPositionalAll(ctx.io, &ph_buf, ph_pos) catch continue;
+            const p_type = if (is_le) std.mem.readInt(u32, ph_buf[0..4], .little) else std.mem.readInt(u32, ph_buf[0..4], .big);
+            if (p_type == 7) {
+                const p_align = if (is_le) std.mem.readInt(u64, ph_buf[48..56], .little) else std.mem.readInt(u64, ph_buf[48..56], .big);
+                if (p_align < min_align) {
+                    var align_bytes: [8]u8 = undefined;
+                    if (is_le) std.mem.writeInt(u64, &align_bytes, min_align, .little) else std.mem.writeInt(u64, &align_bytes, min_align, .big);
+                    try bin_file.writePositionalAll(ctx.io, &align_bytes, ph_pos + 48);
+                }
+                break;
+            }
+        }
+    } else {
+        const e_phoff = if (is_le) std.mem.readInt(u32, elf_buf[28..32], .little) else std.mem.readInt(u32, elf_buf[28..32], .big);
+        const e_phentsize = if (is_le) std.mem.readInt(u16, elf_buf[42..44], .little) else std.mem.readInt(u16, elf_buf[42..44], .big);
+        const e_phnum = if (is_le) std.mem.readInt(u16, elf_buf[44..46], .little) else std.mem.readInt(u16, elf_buf[44..46], .big);
+
+        var i: usize = 0;
+        while (i < e_phnum) : (i += 1) {
+            const ph_pos = e_phoff + i * e_phentsize;
+            var ph_buf: [32]u8 = undefined;
+            _ = bin_file.readPositionalAll(ctx.io, &ph_buf, ph_pos) catch continue;
+            const p_type = if (is_le) std.mem.readInt(u32, ph_buf[0..4], .little) else std.mem.readInt(u32, ph_buf[0..4], .big);
+            if (p_type == 7) {
+                const p_align = if (is_le) std.mem.readInt(u32, ph_buf[28..32], .little) else std.mem.readInt(u32, ph_buf[28..32], .big);
+                if (p_align < min_align) {
+                    var align_bytes: [4]u8 = undefined;
+                    if (is_le) std.mem.writeInt(u32, &align_bytes, @intCast(min_align), .little) else std.mem.writeInt(u32, &align_bytes, @intCast(min_align), .big);
+                    try bin_file.writePositionalAll(ctx.io, &align_bytes, ph_pos + 28);
+                }
+                break;
+            }
+        }
     }
 }
