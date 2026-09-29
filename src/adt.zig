@@ -17,12 +17,12 @@ const UnionField = struct {
 fn getUnionFields(comptime U: type) []const UnionField {
     comptime {
         const info = @typeInfo(U).@"union";
-        var fields: [info.fields.len]UnionField = undefined;
-        for (info.fields, 0..) |f, i| {
+        var fields: [info.field_names.len]UnionField = undefined;
+        for (info.field_names, info.field_types, info.field_attrs, 0..) |name, ty, attr, i| {
             fields[i] = .{
-                .name = f.name,
-                .type = f.type,
-                .alignment = f.alignment,
+                .name = name,
+                .type = ty,
+                .alignment = attr.@"align",
             };
         }
         const frozen = fields;
@@ -43,7 +43,7 @@ pub fn toUnion(comptime fields: []const UnionField) type {
         @setEvalBranchQuota(@max(2000, fields.len * 20));
         var names: [fields.len][:0]const u8 = undefined;
         var types: [fields.len]type = undefined;
-        var attrs: [fields.len]std.builtin.Type.UnionField.Attributes = undefined;
+        var attrs: [fields.len]std.builtin.Type.Union.FieldAttributes = undefined;
         var values: [fields.len]u16 = undefined;
 
         for (fields, 0..) |f, i| {
@@ -63,7 +63,7 @@ pub fn toStruct(comptime fields: []const StructField) type {
         @setEvalBranchQuota(@max(2000, fields.len * 20));
         var names: [fields.len][:0]const u8 = undefined;
         var types: [fields.len]type = undefined;
-        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        var attrs: [fields.len]std.builtin.Type.Struct.FieldAttributes = undefined;
 
         for (fields, 0..) |f, i| {
             names[i] = f.name;
@@ -84,19 +84,19 @@ pub fn Set(comptime Universe: ?type) type {
         pub const universe = Universe orelse @as(type, union(enum) {});
 
         pub fn cardinality(comptime U: type) usize {
-            return @typeInfo(U).@"union".fields.len;
+            return @typeInfo(U).@"union".field_names.len;
         }
 
         pub fn enumToUnion(comptime E: type, comptime T: type) type {
             comptime {
                 const info = @typeInfo(E);
                 if (info != .@"enum") @compileError("enumToUnion expects an enum type, got: " ++ @typeName(E));
-                const len = info.@"enum".fields.len;
+                const len = info.@"enum".field_names.len;
                 var names: [len][:0]const u8 = undefined;
                 var types: [len]type = undefined;
-                var attrs: [len]std.builtin.Type.UnionField.Attributes = undefined;
-                for (info.@"enum".fields, 0..) |f, i| {
-                    names[i] = f.name;
+                var attrs: [len]std.builtin.Type.Union.FieldAttributes = undefined;
+                for (info.@"enum".field_names, 0..) |name, i| {
+                    names[i] = name;
                     types[i] = T;
                     attrs[i] = .{ .@"align" = @alignOf(T) };
                 }
@@ -189,15 +189,15 @@ pub fn Set(comptime Universe: ?type) type {
                 const info1 = @typeInfo(E1);
                 const info2 = @typeInfo(E2);
                 if (info1 != .@"enum" or info2 != .@"enum") @compileError("cartesianProduct expects two enum types");
-                const len1 = info1.@"enum".fields.len;
-                const len2 = info2.@"enum".fields.len;
+                const len1 = info1.@"enum".field_names.len;
+                const len2 = info2.@"enum".field_names.len;
                 const total = len1 * len2;
                 var names: [total][:0]const u8 = undefined;
                 var values: [total]u16 = undefined;
                 var index: usize = 0;
-                for (info1.@"enum".fields) |f1| {
-                    for (info2.@"enum".fields) |f2| {
-                        names[index] = f1.name ++ options.separator ++ f2.name;
+                for (info1.@"enum".field_names) |name1| {
+                    for (info2.@"enum".field_names) |name2| {
+                        names[index] = name1 ++ options.separator ++ name2;
                         values[index] = @intCast(index);
                         index += 1;
                     }

@@ -37,8 +37,8 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           if [ ! -f "$HOME/.local/bin/zig" ]; then
             curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/${{ github.ref_name }}/install.sh | sh
-            $HOME/.local/bin/zigup install 0.16.0
-            $HOME/.local/bin/zigup set 0.16.0
+            $HOME/.local/bin/zigup install master
+            $HOME/.local/bin/zigup set master
           fi
         shell: bash
 
@@ -48,7 +48,7 @@ jobs:
 
           for arch in x86 x86_64 aarch64; do
             echo "Building Linux $arch"
-            zig build -Doptimize=ReleaseFast -Dtarget=$arch-linux
+            zig build -Doptimize=ReleaseFast -Dtarget=$arch-linux -Dpie=true
             cp zig-out/bin/zigup dist/zigup-$arch-linux
           done
 

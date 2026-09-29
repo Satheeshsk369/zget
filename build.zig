@@ -24,12 +24,13 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
-            .strip = optimize != .Debug,
+            .strip = optimize != .debug,
             .imports = &.{
                 .{ .name = "options", .module = options.createModule() },
             },
         }),
     });
+    exe.pie = true;
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");
@@ -37,7 +38,7 @@ pub fn build(b: *std.Build) void {
 
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     const tests = b.addTest(.{
         .root_module = b.createModule(.{

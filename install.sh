@@ -56,4 +56,14 @@ mkdir -p "$BIN_DIR" "$DATA_DIR" "$CONFIG_DIR" "$CACHE_DIR"
 echo "Downloading zigup for ${OS}-${ARCH} (tag ${TAG})"
 curl -sSfL "$DOWNLOAD_URL" -o "$BIN_DIR/zigup"
 chmod +x "$BIN_DIR/zigup"
+
+# Termux compatibility: Android requires PIE (ET_DYN). If binary is ET_EXEC (e_type: 2), patch byte 16 to 3.
+if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
+  # Byte 16 (0x10) of ELF header: 0x02 = ET_EXEC, 0x03 = ET_DYN
+  BYTE16=$(od -An -j16 -N1 -tu1 "$BIN_DIR/zigup" 2>/dev/null | tr -d ' ' || true)
+  if [ "$BYTE16" = "2" ]; then
+    printf '\x03' | dd of="$BIN_DIR/zigup" bs=1 seek=16 count=1 conv=notrunc status=none 2>/dev/null || true
+  fi
+fi
+
 echo "Successfully installed zigup to $BIN_DIR/zigup"

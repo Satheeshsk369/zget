@@ -186,6 +186,42 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
         }
 
         std.Io.Dir.deleteFile(std.Io.Dir.cwd(), ctx.io, download_path) catch {};
+
+        patchElfForTermux(ctx, installDir) catch {};
         std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, dl_secs });
+    }
+}
+
+fn patchElfForTermux(ctx: action.Context, install_dir: []const u8) !void {
+    const builtin = @import("builtin");
+    if (builtin.os.tag != .linux) return;
+
+    var is_android = false;
+    if (ctx.environMap.get("TERMUX_VERSION") != null) {
+        is_android = true;
+    } else {
+        var d = std.Io.Dir.openDirAbsolute(ctx.io, "/data/data/com.termux", .{}) catch null;
+        if (d) |*dir| {
+            dir.close(ctx.io);
+            is_android = true;
+        }
+    }
+    if (!is_android) return;
+
+    var dir = try std.Io.Dir.openDirAbsolute(ctx.io, install_dir, .{});
+    defer dir.close(ctx.io);
+
+    var bin_file = dir.openFile(ctx.io, "zig", .{ .mode = .read_write }) catch return;
+    defer bin_file.close(ctx.io);
+
+    var header: [18]u8 = undefined;
+    var reader = bin_file.reader(ctx.io, &.{});
+    reader.interface.readSliceAll(&header) catch return;
+
+    if (!std.mem.eql(u8, header[0..4], "\x7fELF")) return;
+
+    if (header[16] == 2) {
+        try bin_file.writePositionalAll(ctx.io, &[_]u8{3}, 16);
+        std.log.info("Applied Termux ELF PIE patch to {s}/zig", .{install_dir});
     }
 }

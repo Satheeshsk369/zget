@@ -111,10 +111,10 @@ pub const Type = struct {
         const detail = self.parsed.value.map.get(version) orelse return null;
         const target_name = @tagName(platform);
         const info = @typeInfo(VersionDetail).@"struct";
-        inline for (info.fields) |f| {
-            if (std.mem.eql(u8, f.name, target_name)) {
-                if (f.type == ?Source) {
-                    return @field(detail, f.name);
+        inline for (info.field_names, info.field_types) |name, ty| {
+            if (std.mem.eql(u8, name, target_name)) {
+                if (ty == ?Source) {
+                    return @field(detail, name);
                 }
             }
         }
