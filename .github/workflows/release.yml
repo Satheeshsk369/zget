@@ -48,7 +48,7 @@ jobs:
 
           for arch in x86 x86_64 aarch64; do
             echo "Building Linux $arch"
-            zig build -Doptimize=ReleaseFast -Dtarget=$arch-linux -Dpie=true
+            zig build -Doptimize=ReleaseFast -Dtarget=$arch-linux
             cp zig-out/bin/zigup dist/zigup-$arch-linux
           done
 
