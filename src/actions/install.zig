@@ -3,7 +3,7 @@ const Schema = @import("../schema.zig");
 const dl = @import("../download.zig");
 const action = @import("root.zig");
 const minisign = @import("../minisign.zig");
-const fast_extract = @import("../fast_extract.zig");
+const extract = @import("../extract.zig");
 
 const zig_pubkey = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U";
 
@@ -194,7 +194,7 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             try action.extractZipStrip(ctx.io, dest_dir, &file_reader);
         } else {
             std.log.info("Extracting archive to {s}", .{installDir});
-            try fast_extract.extractTarXz(ctx.io, ctx.gpa, download_path, installDir);
+            try extract.extractTarXz(ctx.io, ctx.gpa, download_path, installDir);
         }
 
         std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, dl_secs });

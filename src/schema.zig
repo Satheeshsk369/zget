@@ -1,6 +1,6 @@
 const std = @import("std");
 const adt = @import("adt.zig");
-const net_helper = @import("net_helper.zig");
+const dns = @import("dns.zig");
 
 const Client = std.http.Client;
 const Allocating = std.Io.Writer.Allocating;
@@ -19,7 +19,7 @@ pub const Index = struct {
 
     pub fn fetchUrl(self: *Self, url_str: []const u8, body: *Allocating) !std.http.Status {
         const uri = try std.Uri.parse(url_str);
-        return net_helper.fetch(&self.client, uri, &.{}, &body.writer);
+        return dns.fetch(&self.client, uri, &.{}, &body.writer);
     }
 
     pub fn deinit(self: *Self) void {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const dl = @import("../download.zig");
 const action = @import("root.zig");
-const net_helper = @import("../net_helper.zig");
+const dns = @import("../dns.zig");
 
 pub fn run(ctx: action.Context) !void {
     const builtin = @import("builtin");
@@ -20,7 +20,7 @@ pub fn run(ctx: action.Context) !void {
 
     const uri = try std.Uri.parse("https://api.github.com/repos/Satheeshsk369/zigup/releases");
     std.log.info("Checking for updates from GitHub", .{});
-    const status = try net_helper.fetch(&client, uri, extra_headers, &httpBuf.writer);
+    const status = try dns.fetch(&client, uri, extra_headers, &httpBuf.writer);
 
     if (status != .ok) {
         std.log.err("failed to check for updates: HTTP {s}", .{@tagName(status)});
