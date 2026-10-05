@@ -1,4 +1,5 @@
 const std = @import("std");
+const net_helper = @import("net_helper.zig");
 const Client = std.http.Client;
 
 fn printProgress(io: std.Io, comptime format: []const u8, args: anytype) void {
@@ -40,7 +41,7 @@ pub const Downloader = struct {
         const start = std.Io.Clock.now(.awake, io).nanoseconds;
         const uri = try std.Uri.parse(url);
 
-        var req = try self.client.request(.GET, uri, .{});
+        var req = try net_helper.request(self.client, .GET, uri, .{});
         defer req.deinit();
         try req.sendBodiless();
 

@@ -53,6 +53,17 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zigup"
 CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zigup"
 
 mkdir -p "$BIN_DIR" "$DATA_DIR" "$CONFIG_DIR" "$CACHE_DIR"
+
+CLEAN_TAG="${TAG#v}"
+if [ -x "$BIN_DIR/zigup" ]; then
+  CURRENT_INSTALLED="$("$BIN_DIR/zigup" version 2>&1 | tr -d '[:space:]' || true)"
+  CURRENT_INSTALLED="${CURRENT_INSTALLED#v}"
+  if [ -n "$CURRENT_INSTALLED" ] && [ "$CURRENT_INSTALLED" = "$CLEAN_TAG" ]; then
+    echo "zigup is already up to date (${CURRENT_INSTALLED})"
+    exit 0
+  fi
+fi
+
 echo "Downloading zigup for ${OS}-${ARCH} (tag ${TAG})"
 curl -sSfL "$DOWNLOAD_URL" -o "$BIN_DIR/zigup"
 chmod +x "$BIN_DIR/zigup"

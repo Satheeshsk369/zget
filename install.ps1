@@ -37,6 +37,18 @@ New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
 New-Item -ItemType Directory -Path $configDir -Force | Out-Null
 New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+
+$cleanTag = $tag.TrimStart('v')
+if (Test-Path $dest) {
+    try {
+        $installedVer = (& $dest version 2>&1 | Out-String).Trim().TrimStart('v')
+        if ($installedVer -and ($installedVer -eq $cleanTag)) {
+            Write-Host "zigup is already up to date ($installedVer)"
+            exit 0
+        }
+    } catch {}
+}
+
 Write-Host "Downloading zigup $tag ($arch)"
 Invoke-WebRequest -Uri $url -OutFile $dest
 

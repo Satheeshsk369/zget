@@ -180,7 +180,10 @@ pub fn ensureDir(io: std.Io, path: []const u8) !void {
 pub fn run(cmd: Command, ctx: Context) ActionError!void {
     switch (cmd) {
         .help => @import("help.zig").run(),
-        .version => std.debug.print("{s}\n", .{@import("options").version}),
+        .version => {
+            const stdout = std.Io.File.stdout();
+            stdout.writeStreamingAll(ctx.io, @import("options").version ++ "\n") catch {};
+        },
         .env => @import("env.zig").run(ctx) catch |e| switch (e) {
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.OutOfMemory => return error.OutOfMemory,

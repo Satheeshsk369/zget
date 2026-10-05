@@ -1,6 +1,7 @@
 const std = @import("std");
 const dl = @import("../download.zig");
 const action = @import("root.zig");
+const net_helper = @import("../net_helper.zig");
 
 pub fn run(ctx: action.Context) !void {
     const builtin = @import("builtin");
@@ -19,15 +20,10 @@ pub fn run(ctx: action.Context) !void {
 
     const uri = try std.Uri.parse("https://api.github.com/repos/Satheeshsk369/zigup/releases");
     std.log.info("Checking for updates from GitHub", .{});
-    const resp = try client.fetch(.{
-        .location = .{ .uri = uri },
-        .method = .GET,
-        .extra_headers = extra_headers,
-        .response_writer = &httpBuf.writer,
-    });
+    const status = try net_helper.fetch(&client, uri, extra_headers, &httpBuf.writer);
 
-    if (resp.status != .ok) {
-        std.log.err("failed to check for updates: HTTP {s}", .{@tagName(resp.status)});
+    if (status != .ok) {
+        std.log.err("failed to check for updates: HTTP {s}", .{@tagName(status)});
         return error.HttpError;
     }
 
@@ -76,17 +72,28 @@ pub fn run(ctx: action.Context) !void {
         std.log.err("no compatible binary asset found for {s} in any release", .{expected_asset_name});
         return error.HttpError;
     };
-    var release_tag = release.tag_name;
-    if (std.mem.startsWith(u8, release_tag, "v")) {
-        release_tag = release_tag[1..];
+    var clean_release: []const u8 = release.tag_name;
+    if (std.mem.startsWith(u8, clean_release, "v")) {
+        clean_release = clean_release[1..];
+    }
+    var clean_current: []const u8 = current_ver;
+    if (std.mem.startsWith(u8, clean_current, "v")) {
+        clean_current = clean_current[1..];
     }
 
-    const parsed_current = std.SemanticVersion.parse(current_ver) catch std.SemanticVersion{ .major = 0, .minor = 0, .patch = 0 };
-    const parsed_release = std.SemanticVersion.parse(release_tag) catch std.SemanticVersion{ .major = 0, .minor = 0, .patch = 0 };
-
-    if (parsed_release.order(parsed_current) == .eq) {
+    if (std.mem.eql(u8, clean_release, clean_current)) {
         std.log.info("zigup is already up to date ({s}).", .{current_ver});
         return;
+    }
+
+    const parsed_current = std.SemanticVersion.parse(clean_current) catch null;
+    const parsed_release = std.SemanticVersion.parse(clean_release) catch null;
+
+    if (parsed_release != null and parsed_current != null) {
+        if (parsed_release.?.order(parsed_current.?) != .gt) {
+            std.log.info("zigup is already up to date ({s}).", .{current_ver});
+            return;
+        }
     }
     const url = download_url.?;
 

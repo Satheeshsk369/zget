@@ -108,12 +108,25 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
     try action.ensureDir(ctx.io, dataDir);
     try action.ensureDir(ctx.io, binDir);
 
-    if (action.dirExists(ctx, installDir)) {
+    const builtin = @import("builtin");
+    const zig_exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+    const installed_exe = try std.fs.path.join(ctx.arena, &.{ installDir, zig_exe_name });
+    const is_installed = if (std.Io.Dir.openFileAbsolute(ctx.io, installed_exe, .{})) |*f| b: {
+        f.close(ctx.io);
+        break :b true;
+    } else |_| false;
+
+    if (is_installed) {
         if (!ctx.sync) {
             std.log.info("Version {s} is already installed.", .{ver});
             return;
         }
         std.log.info("Re-installing version {s} due to sync flag...", .{ver});
+        const data_dir = try ctx.dataDir();
+        var zd = try std.Io.Dir.openDirAbsolute(ctx.io, data_dir, .{});
+        defer zd.close(ctx.io);
+        zd.deleteTree(ctx.io, ver) catch {};
+    } else if (action.dirExists(ctx, installDir)) {
         const data_dir = try ctx.dataDir();
         var zd = try std.Io.Dir.openDirAbsolute(ctx.io, data_dir, .{});
         defer zd.close(ctx.io);
