@@ -154,8 +154,11 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             return;
         }
 
-        const cwd = try std.process.currentPathAlloc(ctx.io, ctx.arena);
-        const download_path = try std.fs.path.join(ctx.arena, &.{ cwd, filename });
+        const cache_dir = try ctx.cacheDir();
+        try action.ensureDir(ctx.io, cache_dir);
+        const download_path = try std.fs.path.join(ctx.arena, &.{ cache_dir, filename });
+        defer std.Io.Dir.deleteFile(std.Io.Dir.cwd(), ctx.io, download_path) catch {};
+
         var file = try std.Io.Dir.createFileAbsolute(ctx.io, download_path, .{});
         defer file.close(ctx.io);
 
@@ -171,7 +174,6 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
 
         minisign.verifyMinisign(minisig_buf.written(), &dlResult.digest, filename, zig_pubkey) catch |err| {
             std.log.err("Minisign verification failed: {s}", .{@errorName(err)});
-            std.Io.Dir.deleteFile(std.Io.Dir.cwd(), ctx.io, download_path) catch {};
             return;
         };
         std.log.info("Minisign OK.", .{});
@@ -198,8 +200,17 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             });
         }
 
-        std.Io.Dir.deleteFile(std.Io.Dir.cwd(), ctx.io, download_path) catch {};
-
         std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, dl_secs });
+
+        var should_set = false;
+        for (ctx.args) |arg| {
+            if (std.mem.eql(u8, arg, "--set") or std.mem.eql(u8, arg, "-s")) {
+                should_set = true;
+                break;
+            }
+        }
+        if (should_set) {
+            try @import("set.zig").run(ctx, ver);
+        }
     }
 }

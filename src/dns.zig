@@ -1,11 +1,18 @@
 const std = @import("std");
 
+var dns_cache: std.StringHashMapUnmanaged([]const u8) = .{};
+
 pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]const u8 {
-    // 1. If host is already an IPv4 or IPv6 address, return a duplicate
+    // 1. If host is already an IP address, return a duplicate
     if (std.Io.net.Ip4Address.parse(host, 0)) |_| return try allocator.dupe(u8, host) else |_| {}
     if (std.Io.net.Ip6Address.parse(host, 0)) |_| return try allocator.dupe(u8, host) else |_| {}
 
-    // 2. Collect nameservers
+    // 2. Check in-memory cache
+    if (dns_cache.get(host)) |cached_ip| {
+        return try allocator.dupe(u8, cached_ip);
+    }
+
+    // 3. Collect nameservers
     var ns_list: [4][4]u8 = .{
         .{ 8, 8, 8, 8 },
         .{ 1, 1, 1, 1 },
@@ -43,10 +50,12 @@ pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]co
     }
     if (ns_count == 0) ns_count = 2; // fallback to 8.8.8.8, 1.1.1.1
 
-    // 3. Build DNS query packet (A record)
+    // 4. Build DNS query packet (A record) with random Query ID
     var packet: [512]u8 = undefined;
-    packet[0] = 0x12;
-    packet[1] = 0x34;
+    const now = std.Io.Clock.real.now(io).nanoseconds;
+    var prng = std.Random.DefaultPrng.init(@truncate(@as(u96, @bitCast(now))));
+    const qid = prng.random().int(u16);
+    std.mem.writeInt(u16, packet[0..2], qid, .big);
     packet[2] = 0x01; // RD = 1
     packet[3] = 0x00;
     packet[4] = 0x00;
@@ -74,7 +83,7 @@ pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]co
 
     const query = packet[0..pos];
 
-    // 4. Send query to nameservers
+    // 5. Send query to nameservers
     for (ns_list[0..ns_count]) |ns| {
         const sock_rc = std.posix.system.socket(std.posix.AF.INET, std.posix.SOCK.DGRAM, 0);
         if (std.posix.errno(sock_rc) != .SUCCESS) continue;
@@ -100,7 +109,10 @@ pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]co
         if (std.posix.errno(recv_rc) != .SUCCESS) continue;
         const resp_len: usize = @intCast(recv_rc);
         if (resp_len < 12) continue;
-        if (resp[0] != 0x12 or resp[1] != 0x34) continue;
+
+        const resp_id = std.mem.readInt(u16, resp[0..2], .big);
+        if (resp_id != qid) continue;
+
         const rcode = resp[3] & 0x0F;
         if (rcode != 0) continue;
         const ancount = std.mem.readInt(u16, resp[6..8], .big);
@@ -129,9 +141,16 @@ pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]co
             const rdlen = std.mem.readInt(u16, resp[p + 8 ..][0..2], .big);
             p += 10;
             if (atype == 1 and rdlen == 4 and p + 4 <= resp_len) {
-                return try std.fmt.allocPrint(allocator, "{d}.{d}.{d}.{d}", .{
+                const result = try std.fmt.allocPrint(allocator, "{d}.{d}.{d}.{d}", .{
                     resp[p], resp[p + 1], resp[p + 2], resp[p + 3],
                 });
+
+                // Cache the resolved result for process lifetime
+                const cached_host = std.heap.page_allocator.dupe(u8, host) catch return result;
+                const cached_ip = std.heap.page_allocator.dupe(u8, result) catch return result;
+                dns_cache.put(std.heap.page_allocator, cached_host, cached_ip) catch {};
+
+                return result;
             }
             p += rdlen;
         }

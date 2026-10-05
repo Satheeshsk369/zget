@@ -20,6 +20,9 @@ pub fn run() void {
             if (std.mem.eql(u8, entry.verb, "delete")) break :blk "[d]elete";
             if (std.mem.eql(u8, entry.verb, "list")) break :blk "[l]ist";
             if (std.mem.eql(u8, entry.verb, "set")) break :blk "[s]et";
+            if (std.mem.eql(u8, entry.verb, "current")) break :blk "[c]urrent";
+            if (std.mem.eql(u8, entry.verb, "clean")) break :blk "clean";
+            if (std.mem.eql(u8, entry.verb, "run")) break :blk "[r]un";
             break :blk entry.verb;
         };
         const usage = if (entry.argLabel) |lbl| alias ++ " " ++ lbl else alias;

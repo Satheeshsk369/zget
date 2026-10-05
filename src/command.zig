@@ -11,11 +11,13 @@ pub fn Group(comptime E: type, comptime Payload: type, comptime label: ?[]const 
     };
 }
 
-pub const A = enum(u2) {
+pub const A = enum(u3) {
     help,
     version,
     env,
     update,
+    current,
+    clean,
 
     pub fn info(self: @This()) []const u8 {
         return switch (self) {
@@ -23,6 +25,8 @@ pub const A = enum(u2) {
             .version => "Print zigup tool version",
             .env => "Print configuration and environment paths",
             .update => "Update zigup to the latest release version",
+            .current => "Show currently active Zig version and path",
+            .clean => "Clean cached indexes and temporary downloads",
         };
     }
 };
@@ -32,13 +36,15 @@ pub const C = enum(u3) {
     delete,
     list,
     set,
+    run,
 
     pub fn info(self: @This()) []const u8 {
         return switch (self) {
-            .install => "Download and install a version",
+            .install => "Download and install a version (--set to activate)",
             .delete => "Delete an installed version",
             .list => "List local installs (or remote versions if mirror is specified)",
             .set => "Set an installed version as the default",
+            .run => "Run a specific installed Zig version",
         };
     }
 };
@@ -53,7 +59,12 @@ fn appendEntries(comptime G: type, comptime out: []Entry, comptime start: usize)
     const info = @typeInfo(G.Type).@"enum";
     for (info.field_names, info.field_values) |name, value| {
         const v: G.Type = @enumFromInt(value);
-        const label = if (std.mem.eql(u8, name, "list")) "<MIRROR>" else G.argLabel;
+        const label = if (std.mem.eql(u8, name, "list"))
+            "<MIRROR>"
+        else if (std.mem.eql(u8, name, "run"))
+            "<TAG> [ARGS...]"
+        else
+            G.argLabel;
         out[i] = .{ .verb = name, .argLabel = label, .description = v.info() };
         i += 1;
     }

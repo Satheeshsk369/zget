@@ -31,11 +31,12 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
         }
         try w.flush();
     } else {
-        const symlinkPath = try std.fs.path.join(ctx.arena, &.{ binDir, "zig" });
-        const targetRel = try std.fmt.allocPrint(ctx.arena, "../share/zig/{s}/zig", .{ver});
+        const targetExe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig" });
+        const targetRel = std.fs.path.relativeAlloc(ctx.arena, binDir, ctx.environMap, binDir, targetExe) catch targetExe;
+
         var bd = try std.Io.Dir.openDirAbsolute(ctx.io, binDir, .{});
         defer bd.close(ctx.io);
-        bd.deleteFile(ctx.io, symlinkPath) catch |err| switch (err) {
+        bd.deleteFile(ctx.io, "zig") catch |err| switch (err) {
             error.FileNotFound => {},
             else => return err,
         };

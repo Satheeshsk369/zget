@@ -1,6 +1,7 @@
 const std = @import("std");
 const Schema = @import("../schema.zig");
 const action = @import("root.zig");
+const current = @import("current.zig");
 
 fn syncMirror(ctx: action.Context, mirror: []const u8) !void {
     const url = ctx.userConfig.getMirrorUrl(mirror) orelse {
@@ -23,7 +24,19 @@ fn syncMirror(ctx: action.Context, mirror: []const u8) !void {
     try Schema.Type.saveCache(ctx.gpa, ctx.io, cache_path, httpBuf.written());
 }
 
+fn compareInstalledVersions(_: void, a: []const u8, b: []const u8) bool {
+    if (std.mem.eql(u8, a, "master")) return true;
+    if (std.mem.eql(u8, b, "master")) return false;
+    const a_ver = std.SemanticVersion.parse(a) catch null;
+    const b_ver = std.SemanticVersion.parse(b) catch null;
+    if (a_ver != null and b_ver != null) {
+        return a_ver.?.order(b_ver.?) == .gt;
+    }
+    return std.mem.order(u8, a, b) == .gt;
+}
+
 pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
+    const stdout = std.Io.File.stdout();
     const mirror = if (mirror_arg.len > 0) mirror_arg else null;
     if (mirror) |m| {
         if (ctx.sync) {
@@ -55,7 +68,8 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
         }.lt);
 
         for (versions.items) |item| {
-            std.debug.print("{s} ({s})\n", .{ item.key, item.date });
+            const line = try std.fmt.allocPrint(ctx.arena, "{s} ({s})\n", .{ item.key, item.date });
+            stdout.writeStreamingAll(ctx.io, line) catch {};
         }
     } else {
         const data_dir = try ctx.dataDir();
@@ -64,7 +78,13 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
         };
         defer dir.close(ctx.io);
 
-        var count: usize = 0;
+        const active_ver = current.getActiveVersion(ctx) catch null;
+        const builtin = @import("builtin");
+        const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+
+        var installed = std.ArrayList([]const u8).empty;
+        defer installed.deinit(ctx.gpa);
+
         var it = dir.iterate();
         while (try it.next(ctx.io)) |entry| {
             if (entry.kind == .directory and
@@ -72,11 +92,30 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
                 !std.mem.eql(u8, entry.name, "cache") and
                 !std.mem.eql(u8, entry.name, "tmp"))
             {
-                std.debug.print("{s}\n", .{entry.name});
-                count += 1;
+                // Verify exe exists inside folder
+                const install_dir = try std.fs.path.join(ctx.arena, &.{ data_dir, entry.name });
+                const exe_path = try std.fs.path.join(ctx.arena, &.{ install_dir, exe_name });
+                if (std.Io.Dir.openFileAbsolute(ctx.io, exe_path, .{})) |*f| {
+                    f.close(ctx.io);
+                    try installed.append(ctx.gpa, try ctx.arena.dupe(u8, entry.name));
+                } else |_| {}
             }
         }
 
-        if (count == 0) std.log.info("No installed versions found in {s}", .{data_dir});
+        if (installed.items.len == 0) {
+            std.log.info("No installed versions found in {s}", .{data_dir});
+            return;
+        }
+
+        std.mem.sort([]const u8, installed.items, {}, compareInstalledVersions);
+
+        for (installed.items) |ver| {
+            const is_active = if (active_ver) |act| std.mem.eql(u8, act, ver) else false;
+            const line = if (is_active)
+                try std.fmt.allocPrint(ctx.arena, "* {s} (active)\n", .{ver})
+            else
+                try std.fmt.allocPrint(ctx.arena, "  {s}\n", .{ver});
+            stdout.writeStreamingAll(ctx.io, line) catch {};
+        }
     }
 }
