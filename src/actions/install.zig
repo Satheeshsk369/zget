@@ -3,6 +3,7 @@ const Schema = @import("../schema.zig");
 const dl = @import("../download.zig");
 const action = @import("root.zig");
 const minisign = @import("../minisign.zig");
+const fast_extract = @import("../fast_extract.zig");
 
 const zig_pubkey = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U";
 
@@ -25,50 +26,6 @@ fn syncMirror(ctx: action.Context, mirror: []const u8) !void {
 
     const cache_path = try ctx.cacheFile(mirror);
     try Schema.Type.saveCache(ctx.gpa, ctx.io, cache_path, httpBuf.written());
-}
-
-fn extractTar(ctx: action.Context, archive_path: []const u8, install_dir: []const u8) !void {
-    var child = std.process.spawn(ctx.io, .{
-        .argv = &.{ "tar", "-xf", archive_path, "-C", install_dir, "--strip-components=1" },
-        .stdin = .ignore,
-        .stdout = .ignore,
-        .stderr = .ignore,
-    }) catch {
-        return extractTarFallback(ctx, archive_path, install_dir);
-    };
-
-    const term = child.wait(ctx.io) catch {
-        return extractTarFallback(ctx, archive_path, install_dir);
-    };
-
-    switch (term) {
-        .exited => |code| {
-            if (code == 0) return;
-            return extractTarFallback(ctx, archive_path, install_dir);
-        },
-        else => return extractTarFallback(ctx, archive_path, install_dir),
-    }
-}
-
-fn extractTarFallback(ctx: action.Context, archive_path: []const u8, install_dir: []const u8) !void {
-    var archive_file = try std.Io.Dir.openFileAbsolute(ctx.io, archive_path, .{});
-    defer archive_file.close(ctx.io);
-
-    var dest_dir = try std.Io.Dir.openDirAbsolute(ctx.io, install_dir, .{});
-    defer dest_dir.close(ctx.io);
-
-    var f_buf: [262144]u8 = undefined;
-    var file_reader = archive_file.reader(ctx.io, &f_buf);
-
-    const decompress_buf = try ctx.gpa.alloc(u8, 2097152);
-    defer ctx.gpa.free(decompress_buf);
-
-    var xz_stream = try std.compress.xz.Decompress.init(&file_reader.interface, ctx.gpa, decompress_buf);
-    defer xz_stream.deinit();
-
-    try std.tar.extract(ctx.io, dest_dir, &xz_stream.reader, .{
-        .strip_components = 1,
-    });
 }
 
 pub fn run(ctx: action.Context, ver: []const u8) !void {
@@ -237,7 +194,7 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             try action.extractZipStrip(ctx.io, dest_dir, &file_reader);
         } else {
             std.log.info("Extracting archive to {s}", .{installDir});
-            try extractTar(ctx, download_path, installDir);
+            try fast_extract.extractTarXz(ctx.io, ctx.gpa, download_path, installDir);
         }
 
         std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, dl_secs });
