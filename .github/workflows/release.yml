@@ -27,19 +27,19 @@ jobs:
             ~/.local/share/zig
             ~/.cache/zigup
             ~/.local/bin
-          key: ${{ runner.os }}-zig-${{ hashFiles('**/build.zig.zon') }}
+          key: ${{ runner.os }}-zig-0.17.0-${{ hashFiles('**/build.zig.zon') }}
           restore-keys: |
-            ${{ runner.os }}-zig-
+            ${{ runner.os }}-zig-0.17.0-
 
       - name: Install zigup & Zig
         run: |
           mkdir -p $HOME/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          if [ ! -f "$HOME/.local/bin/zig" ]; then
+          if ! command -v zigup >/dev/null 2>&1; then
             curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/${{ github.ref_name }}/install.sh | sh
-            $HOME/.local/bin/zigup install 0.17.0
-            $HOME/.local/bin/zigup set 0.17.0
           fi
+          $HOME/.local/bin/zigup install 0.17.0
+          $HOME/.local/bin/zigup set 0.17.0
         shell: bash
 
       - name: Cross-Compile Binaries

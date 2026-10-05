@@ -26,6 +26,42 @@ pub const Config = struct {
         return null;
     }
 
+    fn parseZon(
+        comptime T: type,
+        gpa: std.mem.Allocator,
+        source_z: [:0]const u8,
+        diag: ?*std.zon.parse.Diagnostics,
+        ignore_unknown: bool,
+    ) !T {
+        if (@hasDecl(std.zon.parse, "fromSliceAlloc")) {
+            return std.zon.parse.fromSliceAlloc(T, gpa, source_z, diag, .{
+                .ignore_unknown_fields = ignore_unknown,
+            });
+        } else {
+            const fn_info = @typeInfo(@TypeOf(std.zon.parse.fromSlice)).@"fn";
+            const params_len = comptime if (@hasField(@TypeOf(fn_info), "param_types"))
+                fn_info.param_types.len
+            else if (@hasField(@TypeOf(fn_info), "params"))
+                fn_info.params.len
+            else
+                2;
+            if (params_len == 2) {
+                var dummy_diag: std.zon.parse.Diagnostics = undefined;
+                return std.zon.parse.fromSlice(T, .{
+                    .gpa = gpa,
+                    .arena = gpa,
+                    .source = source_z,
+                    .diagnostics = diag orelse &dummy_diag,
+                    .ignore_unknown_fields = ignore_unknown,
+                });
+            } else {
+                return std.zon.parse.fromSlice(T, gpa, source_z, diag, .{
+                    .ignore_unknown_fields = ignore_unknown,
+                });
+            }
+        }
+    }
+
     pub fn loadOrInit(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
         const file = std.Io.Dir.openFileAbsolute(io, path, .{}) catch |err| switch (err) {
             error.FileNotFound => {
@@ -43,13 +79,7 @@ pub const Config = struct {
                 // For the default case, parse default_zon
                 const default_zon_z = try gpa.dupeSentinel(u8, default_zon, 0);
                 defer gpa.free(default_zon_z);
-                var diag: std.zon.parse.Diagnostics = undefined;
-                return try std.zon.parse.fromSlice(Config, .{
-                    .gpa = gpa,
-                    .arena = gpa,
-                    .source = default_zon_z,
-                    .diagnostics = &diag,
-                });
+                return try parseZon(Config, gpa, default_zon_z, null, false);
             },
             else => return err,
         };
@@ -66,14 +96,12 @@ pub const Config = struct {
 
         var diag: std.zon.parse.Diagnostics = undefined;
 
-        return std.zon.parse.fromSlice(Config, .{
-            .gpa = gpa,
-            .arena = gpa,
-            .source = content_z,
-            .diagnostics = &diag,
-            .ignore_unknown_fields = true,
-        }) catch |e| {
-            diag.log(path);
+        return parseZon(Config, gpa, content_z, &diag, true) catch |e| {
+            if (@hasDecl(std.zon.parse.Diagnostics, "log")) {
+                diag.log(path);
+            } else {
+                std.log.err("Failed to parse ZON: {s}", .{path});
+            }
             return e;
         };
     }
