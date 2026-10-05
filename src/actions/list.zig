@@ -112,7 +112,7 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
         for (installed.items) |ver| {
             const is_active = if (active_ver) |act| std.mem.eql(u8, act, ver) else false;
             const line = if (is_active)
-                try std.fmt.allocPrint(ctx.arena, "* {s} (active)\n", .{ver})
+                try std.fmt.allocPrint(ctx.arena, "* {s} (default)\n", .{ver})
             else
                 try std.fmt.allocPrint(ctx.arena, "  {s}\n", .{ver});
             stdout.writeStreamingAll(ctx.io, line) catch {};
