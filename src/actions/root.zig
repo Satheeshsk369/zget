@@ -220,7 +220,7 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
             error.FileNotFound => return error.FileNotFound,
             else => return error.FileNotFound,
         },
-        .update => @import("update.zig").run(ctx) catch |e| switch (e) {
+        .update => |ver| @import("update.zig").run(ctx, ver) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.AccessDenied => return error.AccessDenied,
@@ -253,7 +253,12 @@ pub fn parseCommand(args: []const []const u8) ?Command {
     if (std.mem.eql(u8, cmd, "help") or std.mem.eql(u8, cmd, "h")) return .help;
     if (std.mem.eql(u8, cmd, "version") or std.mem.eql(u8, cmd, "v")) return .version;
     if (std.mem.eql(u8, cmd, "env") or std.mem.eql(u8, cmd, "e")) return .env;
-    if (std.mem.eql(u8, cmd, "update") or std.mem.eql(u8, cmd, "up")) return .update;
+    if (std.mem.eql(u8, cmd, "update") or std.mem.eql(u8, cmd, "up")) {
+        if (args.len >= 3) {
+            return Command{ .update = args[2] };
+        }
+        return Command{ .update = "" };
+    }
     if (std.mem.eql(u8, cmd, "current") or std.mem.eql(u8, cmd, "c") or std.mem.eql(u8, cmd, "which")) return .current;
     if (std.mem.eql(u8, cmd, "clean")) return .clean;
     if (std.mem.eql(u8, cmd, "run") or std.mem.eql(u8, cmd, "r")) {

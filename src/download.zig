@@ -39,67 +39,95 @@ pub const Downloader = struct {
         const Blake2b512 = std.crypto.hash.blake2.Blake2b512;
         var hasher = Blake2b512.init(.{});
         const start = std.Io.Clock.now(.awake, io).nanoseconds;
-        const uri = try std.Uri.parse(url);
 
-        var req = try dns.request(self.client, .GET, uri, .{});
-        defer req.deinit();
-        try req.sendBodiless();
+        var current_url = url;
+        var url_is_allocated = false;
+        defer if (url_is_allocated) self.client.allocator.free(current_url);
 
-        var redirect_buf: [8192]u8 = undefined;
-        var response = try req.receiveHead(&redirect_buf);
+        var redirect_count: usize = 0;
+        while (redirect_count < 10) : (redirect_count += 1) {
+            const uri = try std.Uri.parse(current_url);
 
-        const content_length = response.head.content_length orelse size;
-        var transfer_buf: [65536]u8 = undefined;
-        var decompress: std.http.Decompress = undefined;
-        const decompress_buf: []u8 = switch (response.head.content_encoding) {
-            .identity => &.{},
-            .deflate, .gzip => try self.client.allocator.alloc(u8, std.compress.flate.max_window_len),
-            .zstd => try self.client.allocator.alloc(u8, std.compress.zstd.default_window_len),
-            .compress => return error.UnsupportedCompressionMethod,
-        };
-        defer self.client.allocator.free(decompress_buf);
+            var req = try dns.request(self.client, .GET, uri, .{
+                .redirect_behavior = .unhandled,
+            });
+            defer req.deinit();
+            try req.sendBodiless();
 
-        const body = response.readerDecompressing(&transfer_buf, &decompress, decompress_buf);
+            var redirect_buf: [8192]u8 = undefined;
+            var response = try req.receiveHead(&redirect_buf);
 
-        var file_buf: [65536]u8 = undefined;
-        var writer = file.writer(io, &file_buf);
-
-        var chunk_buf: [65536]u8 = undefined;
-        var downloaded: u64 = 0;
-        var last_update: i128 = 0;
-
-        while (true) {
-            var chunk_writer = std.Io.Writer.fixed(&chunk_buf);
-            const n = body.stream(&chunk_writer, std.Io.Limit.limited(chunk_buf.len)) catch |err| switch (err) {
-                error.EndOfStream => break,
-                else => |e| return e,
-            };
-            try writer.interface.writeAll(chunk_buf[0..n]);
-            hasher.update(chunk_buf[0..n]);
-            downloaded += n;
-            const now = std.Io.Clock.now(.awake, io).nanoseconds;
-            if (now - last_update > 100_000_000) {
-                last_update = now;
-                if (content_length) |total| {
-                    const pct = (@as(f64, @floatFromInt(downloaded)) / @as(f64, @floatFromInt(total))) * 100.0;
-                    printProgress(io, "\rDownloading: {d:.1}% ({d} / {d} bytes)", .{ pct, downloaded, total });
-                } else {
-                    printProgress(io, "\rDownloading: {d} bytes", .{downloaded});
+            if (response.head.status.class() == .redirect) {
+                if (response.head.location) |loc| {
+                    const next_url = if (std.mem.startsWith(u8, loc, "http://") or std.mem.startsWith(u8, loc, "https://"))
+                        try self.client.allocator.dupe(u8, loc)
+                    else blk: {
+                        var aux = try self.client.allocator.dupe(u8, loc);
+                        defer self.client.allocator.free(aux);
+                        const new_uri = try uri.resolveInPlace(loc.len, &aux);
+                        break :blk try std.fmt.allocPrint(self.client.allocator, "{}", .{new_uri});
+                    };
+                    if (url_is_allocated) self.client.allocator.free(current_url);
+                    current_url = next_url;
+                    url_is_allocated = true;
+                    continue;
                 }
             }
+
+            const content_length = response.head.content_length orelse size;
+            var transfer_buf: [65536]u8 = undefined;
+            var decompress: std.http.Decompress = undefined;
+            const decompress_buf: []u8 = switch (response.head.content_encoding) {
+                .identity => &.{},
+                .deflate, .gzip => try self.client.allocator.alloc(u8, std.compress.flate.max_window_len),
+                .zstd => try self.client.allocator.alloc(u8, std.compress.zstd.default_window_len),
+                .compress => return error.UnsupportedCompressionMethod,
+            };
+            defer self.client.allocator.free(decompress_buf);
+
+            const body = response.readerDecompressing(&transfer_buf, &decompress, decompress_buf);
+
+            var file_buf: [65536]u8 = undefined;
+            var writer = file.writer(io, &file_buf);
+
+            var chunk_buf: [65536]u8 = undefined;
+            var downloaded: u64 = 0;
+            var last_update: i128 = 0;
+
+            while (true) {
+                var chunk_writer = std.Io.Writer.fixed(&chunk_buf);
+                const n = body.stream(&chunk_writer, std.Io.Limit.limited(chunk_buf.len)) catch |err| switch (err) {
+                    error.EndOfStream => break,
+                    else => |e| return e,
+                };
+                try writer.interface.writeAll(chunk_buf[0..n]);
+                hasher.update(chunk_buf[0..n]);
+                downloaded += n;
+                const now = std.Io.Clock.now(.awake, io).nanoseconds;
+                if (now - last_update > 100_000_000) {
+                    last_update = now;
+                    if (content_length) |total| {
+                        const pct = (@as(f64, @floatFromInt(downloaded)) / @as(f64, @floatFromInt(total))) * 100.0;
+                        printProgress(io, "\rDownloading: {d:.1}% ({d} / {d} bytes)", .{ pct, downloaded, total });
+                    } else {
+                        printProgress(io, "\rDownloading: {d} bytes", .{downloaded});
+                    }
+                }
+            }
+            if (content_length) |total| {
+                printProgress(io, "\rDownloading: 100.0% ({d} / {d} bytes)\n", .{ total, total });
+            } else {
+                printProgress(io, "\rDownloading: {d} bytes\n", .{downloaded});
+            }
+
+            try writer.flush();
+
+            var digest: [64]u8 = undefined;
+            hasher.final(&digest);
+
+            const stop = std.Io.Clock.now(.awake, io).nanoseconds;
+            return .{ .status = response.head.status, .duration = stop - start, .digest = digest };
         }
-        if (content_length) |total| {
-            printProgress(io, "\rDownloading: 100.0% ({d} / {d} bytes)\n", .{ total, total });
-        } else {
-            printProgress(io, "\rDownloading: {d} bytes\n", .{downloaded});
-        }
-
-        try writer.flush();
-
-        var digest: [64]u8 = undefined;
-        hasher.final(&digest);
-
-        const stop = std.Io.Clock.now(.awake, io).nanoseconds;
-        return .{ .status = response.head.status, .duration = stop - start, .digest = digest };
+        return error.TooManyHttpRedirects;
     }
 };

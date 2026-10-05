@@ -227,36 +227,59 @@ pub fn request(
 
 pub fn fetch(
     client: *std.http.Client,
-    uri: std.Uri,
+    initial_uri: std.Uri,
     extra_headers: []const std.http.Header,
     response_writer: *std.Io.Writer,
 ) !std.http.Status {
-    var req = try request(client, .GET, uri, .{
-        .extra_headers = extra_headers,
-    });
-    defer req.deinit();
+    var uri_arena = std.heap.ArenaAllocator.init(client.allocator);
+    defer uri_arena.deinit();
+    const ualloc = uri_arena.allocator();
 
-    try req.sendBodiless();
+    var cur_uri = initial_uri;
+    var redirect_count: usize = 0;
+    while (redirect_count < 10) : (redirect_count += 1) {
+        var req = try request(client, .GET, cur_uri, .{
+            .extra_headers = extra_headers,
+            .redirect_behavior = .unhandled,
+        });
+        defer req.deinit();
 
-    var redirect_buf: [8192]u8 = undefined;
-    var response = try req.receiveHead(&redirect_buf);
+        try req.sendBodiless();
 
-    const decompress_buffer: []u8 = switch (response.head.content_encoding) {
-        .identity => &.{},
-        .deflate, .gzip => try client.allocator.alloc(u8, std.compress.flate.max_window_len),
-        .zstd => try client.allocator.alloc(u8, std.compress.zstd.default_window_len),
-        .compress => return error.UnsupportedCompressionMethod,
-    };
-    defer client.allocator.free(decompress_buffer);
+        var redirect_buf: [8192]u8 = undefined;
+        var response = try req.receiveHead(&redirect_buf);
 
-    var transfer_buffer: [64]u8 = undefined;
-    var decompress: std.http.Decompress = undefined;
-    const reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
+        if (response.head.status.class() == .redirect) {
+            if (response.head.location) |loc| {
+                if (std.mem.startsWith(u8, loc, "http://") or std.mem.startsWith(u8, loc, "https://")) {
+                    const safe_loc = try ualloc.dupe(u8, loc);
+                    cur_uri = try std.Uri.parse(safe_loc);
+                } else {
+                    var aux = try ualloc.dupe(u8, loc);
+                    cur_uri = try cur_uri.resolveInPlace(loc.len, &aux);
+                }
+                continue;
+            }
+        }
 
-    _ = reader.streamRemaining(response_writer) catch |err| switch (err) {
-        error.ReadFailed => return response.bodyErr().?,
-        else => |e| return e,
-    };
+        const decompress_buffer: []u8 = switch (response.head.content_encoding) {
+            .identity => &.{},
+            .deflate, .gzip => try client.allocator.alloc(u8, std.compress.flate.max_window_len),
+            .zstd => try client.allocator.alloc(u8, std.compress.zstd.default_window_len),
+            .compress => return error.UnsupportedCompressionMethod,
+        };
+        defer client.allocator.free(decompress_buffer);
 
-    return response.head.status;
+        var transfer_buffer: [64]u8 = undefined;
+        var decompress: std.http.Decompress = undefined;
+        const reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
+
+        _ = reader.streamRemaining(response_writer) catch |err| switch (err) {
+            error.ReadFailed => return response.bodyErr().?,
+            else => |e| return e,
+        };
+
+        return response.head.status;
+    }
+    return error.TooManyHttpRedirects;
 }

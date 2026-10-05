@@ -15,7 +15,6 @@ pub const A = enum(u3) {
     help,
     version,
     env,
-    update,
     current,
     clean,
 
@@ -24,7 +23,6 @@ pub const A = enum(u3) {
             .help => "Print this message",
             .version => "Print zigup tool version",
             .env => "Print configuration and environment paths",
-            .update => "Update zigup to the latest release version",
             .current => "Show currently active Zig version and path",
             .clean => "Clean cached indexes and temporary downloads",
         };
@@ -37,6 +35,7 @@ pub const C = enum(u3) {
     list,
     set,
     run,
+    update,
 
     pub fn info(self: @This()) []const u8 {
         return switch (self) {
@@ -45,6 +44,7 @@ pub const C = enum(u3) {
             .list => "List local installs (or remote versions if mirror is specified)",
             .set => "Set an installed version as the default",
             .run => "Run a specific installed Zig version",
+            .update => "Update zigup tool (optionally to a specific version)",
         };
     }
 };
@@ -63,6 +63,8 @@ fn appendEntries(comptime G: type, comptime out: []Entry, comptime start: usize)
             "<MIRROR>"
         else if (std.mem.eql(u8, name, "run"))
             "<TAG> [ARGS...]"
+        else if (std.mem.eql(u8, name, "update"))
+            "[TAG]"
         else
             G.argLabel;
         out[i] = .{ .verb = name, .argLabel = label, .description = v.info() };

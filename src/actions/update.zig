@@ -3,7 +3,7 @@ const dl = @import("../download.zig");
 const action = @import("root.zig");
 const dns = @import("../dns.zig");
 
-pub fn run(ctx: action.Context) !void {
+pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
     const builtin = @import("builtin");
     const suffix = if (builtin.os.tag == .windows) ".exe" else "";
     const expected_asset_name = try std.fmt.allocPrint(ctx.arena, "zigup-{s}{s}", .{ action.targetKey(), suffix });
@@ -53,52 +53,86 @@ pub fn run(ctx: action.Context) !void {
     }
 
     const current_ver = @import("options").version;
-    var target_release: ?GitHubRelease = null;
-    var download_url: ?[]const u8 = null;
-
-    // Find the latest release that actually has the asset matching expected_asset_name
-    for (releases) |rel| {
-        for (rel.assets) |asset| {
-            if (std.mem.eql(u8, asset.name, expected_asset_name)) {
-                target_release = rel;
-                download_url = asset.browser_download_url;
-                break;
-            }
-        }
-        if (target_release != null) break;
-    }
-
-    const release = target_release orelse {
-        std.log.err("no compatible binary asset found for {s} in any release", .{expected_asset_name});
-        return error.HttpError;
-    };
-    var clean_release: []const u8 = release.tag_name;
-    if (std.mem.startsWith(u8, clean_release, "v")) {
-        clean_release = clean_release[1..];
-    }
     var clean_current: []const u8 = current_ver;
     if (std.mem.startsWith(u8, clean_current, "v")) {
         clean_current = clean_current[1..];
     }
 
-    if (std.mem.eql(u8, clean_release, clean_current)) {
-        std.log.info("zigup is already up to date ({s}).", .{current_ver});
-        return;
-    }
+    var target_release: ?GitHubRelease = null;
+    var download_url: ?[]const u8 = null;
 
-    const parsed_current = std.SemanticVersion.parse(clean_current) catch null;
-    const parsed_release = std.SemanticVersion.parse(clean_release) catch null;
+    if (requested_tag.len > 0) {
+        var clean_req: []const u8 = requested_tag;
+        if (std.mem.startsWith(u8, clean_req, "v")) clean_req = clean_req[1..];
 
-    if (parsed_release != null and parsed_current != null) {
-        if (parsed_release.?.order(parsed_current.?) != .gt) {
+        if (std.mem.eql(u8, clean_req, clean_current)) {
+            std.log.info("zigup is already at version {s}.", .{current_ver});
+            return;
+        }
+
+        for (releases) |rel| {
+            var rel_tag: []const u8 = rel.tag_name;
+            if (std.mem.startsWith(u8, rel_tag, "v")) rel_tag = rel_tag[1..];
+            if (std.mem.eql(u8, rel_tag, clean_req)) {
+                for (rel.assets) |asset| {
+                    if (std.mem.eql(u8, asset.name, expected_asset_name)) {
+                        target_release = rel;
+                        download_url = asset.browser_download_url;
+                        break;
+                    }
+                }
+                if (target_release != null) break;
+            }
+        }
+
+        if (target_release == null) {
+            std.log.err("release '{s}' with binary '{s}' not found.", .{ requested_tag, expected_asset_name });
+            return error.FileNotFound;
+        }
+    } else {
+        // Find the latest release that actually has the asset matching expected_asset_name
+        for (releases) |rel| {
+            for (rel.assets) |asset| {
+                if (std.mem.eql(u8, asset.name, expected_asset_name)) {
+                    target_release = rel;
+                    download_url = asset.browser_download_url;
+                    break;
+                }
+            }
+            if (target_release != null) break;
+        }
+
+        const release = target_release orelse {
+            std.log.err("no compatible binary asset found for {s} in any release", .{expected_asset_name});
+            return error.HttpError;
+        };
+        var clean_release: []const u8 = release.tag_name;
+        if (std.mem.startsWith(u8, clean_release, "v")) {
+            clean_release = clean_release[1..];
+        }
+
+        if (std.mem.eql(u8, clean_release, clean_current)) {
             std.log.info("zigup is already up to date ({s}).", .{current_ver});
             return;
         }
+
+        const parsed_current = std.SemanticVersion.parse(clean_current) catch null;
+        const parsed_release = std.SemanticVersion.parse(clean_release) catch null;
+
+        if (parsed_release != null and parsed_current != null) {
+            if (parsed_release.?.order(parsed_current.?) != .gt) {
+                std.log.info("zigup is already up to date ({s}).", .{current_ver});
+                return;
+            }
+        }
     }
+
     const url = download_url.?;
 
     const bin_dir = try ctx.binDir();
-    const temp_exe_path = try std.fs.path.join(ctx.arena, &.{ bin_dir, "zigup.tmp" });
+    const exe_name = if (comptime builtin.os.tag == .windows) "zigup.exe" else "zigup";
+    const tmp_name = if (comptime builtin.os.tag == .windows) "zigup.tmp.exe" else "zigup.tmp";
+    const temp_exe_path = try std.fs.path.join(ctx.arena, &.{ bin_dir, tmp_name });
 
     std.log.info("Downloading new binary from {s}", .{url});
 
@@ -135,9 +169,9 @@ pub fn run(ctx: action.Context) !void {
     var bd = try std.Io.Dir.openDirAbsolute(ctx.io, bin_dir, .{});
     defer bd.close(ctx.io);
 
-    bd.deleteFile(ctx.io, "zigup") catch {};
+    bd.deleteFile(ctx.io, exe_name) catch {};
     success = true;
-    bd.rename("zigup.tmp", bd, "zigup", ctx.io) catch |err| {
+    bd.rename(tmp_name, bd, exe_name, ctx.io) catch |err| {
         std.log.err("failed to replace zigup binary: {s}", .{@errorName(err)});
         return err;
     };
