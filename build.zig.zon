@@ -1,8 +1,8 @@
 .{
     .name = .zigup,
-    .version = "0.3.5",
+    .version = "0.3.6",
     .fingerprint = 0x7cbb96d030699973,
-    .minimum_zig_version = "0.17.0-dev.1417+20befa4e6",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

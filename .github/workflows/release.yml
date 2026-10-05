@@ -37,8 +37,8 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           if [ ! -f "$HOME/.local/bin/zig" ]; then
             curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/${{ github.ref_name }}/install.sh | sh
-            $HOME/.local/bin/zigup install master
-            $HOME/.local/bin/zigup set master
+            $HOME/.local/bin/zigup install 0.17.0
+            $HOME/.local/bin/zigup set 0.17.0
           fi
         shell: bash
 

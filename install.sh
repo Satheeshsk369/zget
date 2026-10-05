@@ -57,19 +57,4 @@ echo "Downloading zigup for ${OS}-${ARCH} (tag ${TAG})"
 curl -sSfL "$DOWNLOAD_URL" -o "$BIN_DIR/zigup"
 chmod +x "$BIN_DIR/zigup"
 
-if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ]; then
-  if ! command -v termux-elf-cleaner >/dev/null 2>&1; then
-    pkg install -y termux-elf-cleaner >/dev/null 2>&1 || true
-  fi
-
-  if command -v termux-elf-cleaner >/dev/null 2>&1; then
-    termux-elf-cleaner "$BIN_DIR/zigup" >/dev/null 2>&1 || true
-  fi
-
-  BYTE16=$(od -An -j16 -N1 -tu1 "$BIN_DIR/zigup" 2>/dev/null | tr -d ' ' || true)
-  if [ "$BYTE16" = "2" ]; then
-    printf '\x03' | dd of="$BIN_DIR/zigup" bs=1 seek=16 count=1 conv=notrunc status=none 2>/dev/null || true
-  fi
-fi
-
 echo "Successfully installed zigup to $BIN_DIR/zigup"

@@ -43,7 +43,13 @@ pub const Config = struct {
                 // For the default case, parse default_zon
                 const default_zon_z = try gpa.dupeSentinel(u8, default_zon, 0);
                 defer gpa.free(default_zon_z);
-                return try std.zon.parse.fromSliceAlloc(Config, gpa, default_zon_z, null, .{});
+                var diag: std.zon.parse.Diagnostics = undefined;
+                return try std.zon.parse.fromSlice(Config, .{
+                    .gpa = gpa,
+                    .arena = gpa,
+                    .source = default_zon_z,
+                    .diagnostics = &diag,
+                });
             },
             else => return err,
         };
@@ -58,16 +64,16 @@ pub const Config = struct {
         const content_z = try gpa.dupeSentinel(u8, content, 0);
         defer gpa.free(content_z);
 
-        var diag = std.zon.parse.Diagnostics{};
-        defer diag.deinit(gpa);
+        var diag: std.zon.parse.Diagnostics = undefined;
 
-        return std.zon.parse.fromSliceAlloc(Config, gpa, content_z, &diag, .{
+        return std.zon.parse.fromSlice(Config, .{
+            .gpa = gpa,
+            .arena = gpa,
+            .source = content_z,
+            .diagnostics = &diag,
             .ignore_unknown_fields = true,
         }) catch |e| {
-            var http_buf = std.Io.Writer.Allocating.init(gpa);
-            defer http_buf.deinit();
-            diag.format(&http_buf.writer) catch {};
-            std.debug.print("ZON Parse error:\n{s}\n", .{http_buf.written()});
+            diag.log(path);
             return e;
         };
     }

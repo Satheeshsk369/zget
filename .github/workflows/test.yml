@@ -23,10 +23,10 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/${{ github.ref_name }}/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install master Zig
+      - name: Install Zig
         run: |
-          zigup install master
-          zigup set master
+          zigup install 0.17.0
+          zigup set 0.17.0
       - name: Verify
         run: |
           zigup list
@@ -48,11 +48,11 @@ jobs:
         shell: pwsh
         run: Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\zigup"
 
-      - name: Install master Zig
+      - name: Install Zig
         shell: pwsh
         run: |
-          zigup install master
-          zigup set master
+          zigup install 0.17.0
+          zigup set 0.17.0
       - name: Verify
         shell: pwsh
         run: |
