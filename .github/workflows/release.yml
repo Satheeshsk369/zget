@@ -40,6 +40,7 @@ jobs:
           fi
           $HOME/.local/bin/zigup install 0.17.0
           $HOME/.local/bin/zigup set 0.17.0
+          zig version
         shell: bash
 
       - name: Cross-Compile Binaries
