@@ -5,6 +5,7 @@ const config = @import("../config.zig");
 
 pub const Command = command.Command;
 pub const Mirror = Schema.Index.Mirror;
+pub const extract = @import("../extract.zig");
 
 pub const ActionError = error{
     HomeNotFound,
@@ -183,6 +184,18 @@ pub fn getActiveVersion(ctx: Context) !?[]const u8 {
     const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
     const exe_path = try std.fs.path.join(ctx.arena, &.{ binDir, exe_name });
 
+    if (comptime builtin.os.tag == .windows) {
+        const active_file_path = try std.fs.path.join(ctx.arena, &.{ binDir, "active_version" });
+        var af = std.Io.Dir.openFileAbsolute(ctx.io, active_file_path, .{}) catch return null;
+        defer af.close(ctx.io);
+        var buf: [64]u8 = undefined;
+        var r = af.reader(ctx.io, &buf);
+        var val_buf: [64]u8 = undefined;
+        const n = r.interface.readSliceShort(&val_buf) catch return null;
+        if (n == 0) return null;
+        return try ctx.arena.dupe(u8, std.mem.trim(u8, val_buf[0..n], " \r\n\t"));
+    }
+
     var link_buf: [std.fs.max_path_bytes]u8 = undefined;
     const len = std.Io.Dir.readLinkAbsolute(ctx.io, exe_path, &link_buf) catch return null;
     const target = link_buf[0..len];
@@ -284,6 +297,12 @@ pub fn runSet(ctx: Context, ver: []const u8) !void {
             try w.interface.writeAll(chunk[0..n]);
         }
         try w.flush();
+
+        // Write active version marker so 'zigup current' can resolve on Windows
+        const active_file_path = try std.fs.path.join(ctx.arena, &.{ binDir, "active_version" });
+        var af = try std.Io.Dir.createFileAbsolute(ctx.io, active_file_path, .{ .truncate = true });
+        defer af.close(ctx.io);
+        try af.writeStreamingAll(ctx.io, ver);
     } else {
         const targetExe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig" });
         const targetRel = std.fs.path.relativeAlloc(ctx.arena, binDir, ctx.environMap, binDir, targetExe) catch targetExe;
@@ -451,85 +470,3 @@ pub fn parseCommand(args: []const []const u8) ?Command {
     return null;
 }
 
-pub fn extractZipStrip(io: std.Io, dest: std.Io.Dir, fr: *std.Io.File.Reader) !void {
-    var iter = try std.zip.Iterator.init(fr);
-    const total = iter.cd_record_count;
-    std.log.info("Extracting {d} entries", .{total});
-    var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
-    var extracted: u64 = 0;
-
-    while (try iter.next()) |entry| {
-        if (filename_buf.len < entry.filename_len)
-            return error.ZipInsufficientBuffer;
-
-        const filename = filename_buf[0..entry.filename_len];
-        {
-            try fr.seekTo(entry.header_zip_offset + @sizeOf(std.zip.CentralDirectoryFileHeader));
-            try fr.interface.readSliceAll(filename);
-        }
-
-        std.mem.replaceScalar(u8, filename, '\\', '/');
-
-        const slash_idx = std.mem.indexOfScalar(u8, filename, '/') orelse continue;
-        const stripped_filename = filename[slash_idx + 1 ..];
-        if (stripped_filename.len == 0) continue;
-
-        const local_data_header_offset: u64 = local_data_header_offset: {
-            const local_header = blk: {
-                try fr.seekTo(entry.file_offset);
-                break :blk try fr.interface.takeStruct(std.zip.LocalFileHeader, .little);
-            };
-            if (!std.mem.eql(u8, &local_header.signature, &std.zip.local_file_header_sig))
-                return error.ZipBadFileOffset;
-            if (local_header.version_needed_to_extract != entry.version_needed_to_extract)
-                return error.ZipMismatchVersionNeeded;
-            if (local_header.last_modification_time != entry.last_modification_time)
-                return error.ZipMismatchModTime;
-            if (local_header.last_modification_date != entry.last_modification_date)
-                return error.ZipMismatchModDate;
-
-            break :local_data_header_offset @as(u64, local_header.filename_len) +
-                @as(u64, local_header.extra_len);
-        };
-
-        const data_offset = entry.file_offset + @sizeOf(std.zip.LocalFileHeader) + local_data_header_offset;
-
-        if (filename[filename.len - 1] == '/') {
-            try dest.createDirPath(io, stripped_filename[0 .. stripped_filename.len - 1]);
-            continue;
-        }
-
-        const out_file = blk: {
-            if (std.fs.path.dirname(stripped_filename)) |dirname| {
-                var parent_dir = try dest.createDirPathOpen(io, dirname, .{});
-                defer parent_dir.close(io);
-                break :blk try parent_dir.createFile(io, std.fs.path.basename(stripped_filename), .{});
-            } else {
-                break :blk try dest.createFile(io, stripped_filename, .{});
-            }
-        };
-        defer out_file.close(io);
-
-        try fr.seekTo(data_offset);
-
-        switch (entry.compression_method) {
-            .store => {
-                var w = out_file.writer(io, &.{});
-                try fr.interface.streamExact64(&w.interface, entry.uncompressed_size);
-            },
-            .deflate => {
-                const decompress_buf = try std.heap.page_allocator.alloc(u8, std.compress.flate.max_window_len);
-                defer std.heap.page_allocator.free(decompress_buf);
-
-                var decompressor = std.compress.flate.Decompress.init(&fr.interface, .raw, decompress_buf);
-                var out_writer = out_file.writer(io, &.{});
-                try decompressor.reader.streamExact64(&out_writer.interface, entry.uncompressed_size);
-            },
-            _ => return error.UnsupportedCompressionMethod,
-        }
-
-        extracted += 1;
-        if (extracted % 50 == 0 or extracted == total)
-            std.log.info("Extracting: {d}/{d}", .{ extracted, total });
-    }
-}

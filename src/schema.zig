@@ -29,6 +29,11 @@ pub const Source = struct {
     tarball: []const u8,
     shasum: []const u8,
     size: usize,
+
+    pub fn deinit(self: Source, allocator: std.mem.Allocator) void {
+        allocator.free(self.tarball);
+        allocator.free(self.shasum);
+    }
 };
 
 pub const Platform = struct {

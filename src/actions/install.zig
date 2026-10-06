@@ -95,6 +95,7 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
         std.log.err("no binary found for version {s} on {s}", .{ ver, action.targetKey() });
         return;
     };
+    defer src.deinit(ctx.gpa);
 
     try runFromSource(ctx, ver, src);
 }
@@ -183,16 +184,8 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
         const is_zip = std.mem.endsWith(u8, filename, ".zip");
 
         if (is_zip) {
-            var archive_file = try std.Io.Dir.openFileAbsolute(ctx.io, download_path, .{});
-            defer archive_file.close(ctx.io);
-
-            var dest_dir = try std.Io.Dir.openDirAbsolute(ctx.io, installDir, .{});
-            defer dest_dir.close(ctx.io);
-
-            var f_buf: [65536]u8 = undefined;
-            var file_reader = archive_file.reader(ctx.io, &f_buf);
             std.log.info("Extracting archive to {s}", .{installDir});
-            try action.extractZipStrip(ctx.io, dest_dir, &file_reader);
+            try extract.extractZipStripMultiThread(ctx.io, ctx.gpa, download_path, installDir);
         } else {
             std.log.info("Extracting archive to {s}", .{installDir});
             try extract.extractTarXz(ctx.io, ctx.gpa, download_path, installDir);
