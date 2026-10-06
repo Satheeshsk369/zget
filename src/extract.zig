@@ -19,13 +19,6 @@ pub fn extractTarXz(
     var xz_stream = try std.compress.xz.Decompress.init(&file_reader.interface, gpa, decompress_buf);
     defer xz_stream.deinit();
 
-    var dir_cache = std.StringHashMap(void).init(gpa);
-    defer {
-        var it = dir_cache.keyIterator();
-        while (it.next()) |k| gpa.free(k.*);
-        dir_cache.deinit();
-    }
-
     var file_name_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var link_name_buffer: [std.Io.Dir.max_path_bytes]u8 = undefined;
     var it: std.tar.Iterator = .init(&xz_stream.reader, .{
@@ -34,19 +27,21 @@ pub fn extractTarXz(
     });
     var copy_buf: [65536]u8 = undefined;
 
+    var last_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
+    var last_dir_len: usize = 0;
+
     while (try it.next()) |file| {
-        // Strip the leading root component (e.g., "zig-linux-aarch64-0.18.0-dev.../")
         const slash_idx = std.mem.indexOfScalar(u8, file.name, '/') orelse continue;
         const rel_path = file.name[slash_idx + 1 ..];
         if (rel_path.len == 0) continue;
 
         switch (file.kind) {
             .directory => {
-                try ensureDirCached(io, dest_dir, gpa, &dir_cache, rel_path);
+                ensureParentDir(io, dest_dir, &last_dir_buf, &last_dir_len, rel_path);
             },
             .file => {
                 if (std.fs.path.dirname(rel_path)) |parent| {
-                    try ensureDirCached(io, dest_dir, gpa, &dir_cache, parent);
+                    ensureParentDir(io, dest_dir, &last_dir_buf, &last_dir_len, parent);
                 }
 
                 const is_exec = (file.mode & 0o111) != 0;
@@ -64,7 +59,7 @@ pub fn extractTarXz(
             },
             .sym_link => {
                 if (std.fs.path.dirname(rel_path)) |parent| {
-                    try ensureDirCached(io, dest_dir, gpa, &dir_cache, parent);
+                    ensureParentDir(io, dest_dir, &last_dir_buf, &last_dir_len, parent);
                 }
                 dest_dir.deleteFile(io, rel_path) catch {};
                 try dest_dir.symLink(io, file.link_name, rel_path, .{});
@@ -73,16 +68,18 @@ pub fn extractTarXz(
     }
 }
 
-fn ensureDirCached(
+fn ensureParentDir(
     io: std.Io,
     dest_dir: std.Io.Dir,
-    gpa: std.mem.Allocator,
-    dir_cache: *std.StringHashMap(void),
-    rel_path: []const u8,
-) !void {
-    if (dir_cache.contains(rel_path)) return;
+    last_dir_buf: *[std.fs.max_path_bytes]u8,
+    last_dir_len: *usize,
+    path: []const u8,
+) void {
+    if (path.len == last_dir_len.* and std.mem.eql(u8, last_dir_buf[0..last_dir_len.*], path)) {
+        return;
+    }
 
-    var iter = std.mem.splitScalar(u8, rel_path, '/');
+    var iter = std.mem.splitScalar(u8, path, '/');
     var accum_buf: [std.fs.max_path_bytes]u8 = undefined;
     var accum_len: usize = 0;
 
@@ -95,14 +92,11 @@ fn ensureDirCached(
         @memcpy(accum_buf[accum_len .. accum_len + part.len], part);
         accum_len += part.len;
 
-        const sub = accum_buf[0..accum_len];
-        if (!dir_cache.contains(sub)) {
-            dest_dir.createDir(io, sub, .default_dir) catch |err| switch (err) {
-                error.PathAlreadyExists => {},
-                else => return err,
-            };
-            const owned = try gpa.dupe(u8, sub);
-            try dir_cache.put(owned, {});
-        }
+        dest_dir.createDir(io, accum_buf[0..accum_len], .default_dir) catch {};
+    }
+
+    if (path.len <= last_dir_buf.len) {
+        @memcpy(last_dir_buf[0..path.len], path);
+        last_dir_len.* = path.len;
     }
 }

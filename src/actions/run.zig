@@ -14,11 +14,9 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
         return error.FileNotFound;
     }
 
-    // Build argv: [exe_path, ...remaining args after 'run <ver>']
     var argv = std.ArrayList([]const u8).empty;
     try argv.append(ctx.arena, exe_path);
 
-    // ctx.args contains [zigup, run, ver, ...]
     var found_ver = false;
     for (ctx.args) |arg| {
         if (!found_ver) {
