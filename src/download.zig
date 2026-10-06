@@ -75,7 +75,7 @@ pub const Downloader = struct {
             }
 
             const content_length = response.head.content_length orelse size;
-            var transfer_buf: [65536]u8 = undefined;
+            var transfer_buf: [262144]u8 = undefined;
             var decompress: std.http.Decompress = undefined;
             const decompress_buf: []u8 = switch (response.head.content_encoding) {
                 .identity => &.{},
@@ -87,10 +87,10 @@ pub const Downloader = struct {
 
             const body = response.readerDecompressing(&transfer_buf, &decompress, decompress_buf);
 
-            var file_buf: [65536]u8 = undefined;
+            var file_buf: [262144]u8 = undefined;
             var writer = file.writer(io, &file_buf);
 
-            var chunk_buf: [65536]u8 = undefined;
+            var chunk_buf: [262144]u8 = undefined;
             var downloaded: u64 = 0;
             var last_update: i128 = 0;
 

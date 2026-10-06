@@ -159,9 +159,15 @@ pub fn resolve(allocator: std.mem.Allocator, io: std.Io, host: []const u8) ![]co
 }
 
 pub fn prepareConnection(client: *std.http.Client, uri: std.Uri) !?*std.http.Client.Connection {
+    const protocol = std.http.Client.Protocol.fromUri(uri) orelse return null;
+    const proxy = switch (protocol) {
+        .plain => client.http_proxy,
+        .tls => client.https_proxy,
+    };
+    if (proxy != null) return null;
+
     const raw_host = uri.host orelse return null;
     const host_str = raw_host.percent_encoded;
-    const protocol = std.http.Client.Protocol.fromUri(uri) orelse return null;
     const port: u16 = uri.port orelse switch (protocol) {
         .plain => 80,
         .tls => 443,
@@ -270,7 +276,7 @@ pub fn fetch(
         };
         defer client.allocator.free(decompress_buffer);
 
-        var transfer_buffer: [64]u8 = undefined;
+        var transfer_buffer: [65536]u8 = undefined;
         var decompress: std.http.Decompress = undefined;
         const reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
 

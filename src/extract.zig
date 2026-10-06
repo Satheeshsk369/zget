@@ -15,7 +15,7 @@ pub fn extractTarXz(
     var f_buf: [262144]u8 = undefined;
     var file_reader = archive_file.reader(io, &f_buf);
 
-    const decompress_buf = try gpa.alloc(u8, 2097152);
+    const decompress_buf = try gpa.alloc(u8, 4194304);
     var xz_stream = try std.compress.xz.Decompress.init(&file_reader.interface, gpa, decompress_buf);
     defer xz_stream.deinit();
 
@@ -25,7 +25,7 @@ pub fn extractTarXz(
         .file_name_buffer = &file_name_buffer,
         .link_name_buffer = &link_name_buffer,
     });
-    var copy_buf: [65536]u8 = undefined;
+    var copy_buf: [262144]u8 = undefined;
 
     var last_dir_buf: [std.fs.max_path_bytes]u8 = undefined;
     var last_dir_len: usize = 0;
