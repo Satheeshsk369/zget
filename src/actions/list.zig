@@ -56,7 +56,14 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
 
         var it = schema.parsed.value.map.iterator();
         while (it.next()) |entry| {
-            try versions.append(ctx.gpa, .{ .key = entry.key_ptr.*, .date = &entry.value_ptr.date });
+            const date = if (entry.value_ptr.* == .object)
+                if (entry.value_ptr.object.get("date")) |d|
+                    if (d == .string) d.string else ""
+                else
+                    ""
+            else
+                "";
+            try versions.append(ctx.gpa, .{ .key = entry.key_ptr.*, .date = date });
         }
 
         std.mem.sort(VersionItem, versions.items, {}, struct {

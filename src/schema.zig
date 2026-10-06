@@ -1,10 +1,8 @@
 const std = @import("std");
-const adt = @import("adt.zig");
 const dns = @import("dns.zig");
 
 const Client = std.http.Client;
 const Allocating = std.Io.Writer.Allocating;
-const Set = adt.Set(null);
 
 pub const Index = struct {
     client: Client,
@@ -33,47 +31,29 @@ pub const Source = struct {
     size: usize,
 };
 
-pub const Arch = enum { x86_64, aarch64, arm, riscv64, powerpc64le, x86, loongarch64, s390x };
-pub const OS = enum { macos, linux, windows, freebsd, netbsd, openbsd };
-
 pub const Platform = struct {
-    pub const Combination = Set.cartesianProduct(Arch, OS, .{ .separator = "-" });
-
-    pub fn parse(platform: []const u8) ?Combination {
-        return std.meta.stringToEnum(Combination, platform);
-    }
-
-    pub fn toUnion(comptime FieldType: type) type {
-        return Set.enumToUnion(Combination, FieldType);
+    pub fn parse(platform: []const u8) ?[]const u8 {
+        return platform;
     }
 };
 
-pub const VersionDetail = decl: {
-    const BaseEnum = enum { version, date, docs, notes, stdDocs, src, bootstrap };
-    const BaseUnion = union(BaseEnum) {
-        version: ?[]const u8,
-        date: [10]u8,
-        docs: ?[]const u8,
-        notes: ?[]const u8,
-        stdDocs: ?[]const u8,
-        src: ?Source,
-        bootstrap: ?Source,
-    };
-    const PlatformUnion = Platform.toUnion(?Source);
-    break :decl Set.unionToStruct(Set.join(BaseUnion, PlatformUnion));
+pub const VersionDetail = struct {
+    date: []const u8 = "",
+    object: std.json.Value,
 };
 
 pub const Type = struct {
-    parsed: std.json.Parsed(std.json.ArrayHashMap(VersionDetail)),
+    allocator: std.mem.Allocator,
+    parsed: std.json.Parsed(std.json.ArrayHashMap(std.json.Value)),
 
     pub fn parse(allocator: std.mem.Allocator, json: []const u8) !Type {
         const parsed = try std.json.parseFromSlice(
-            std.json.ArrayHashMap(VersionDetail),
+            std.json.ArrayHashMap(std.json.Value),
             allocator,
             json,
             .{ .ignore_unknown_fields = true, .allocate = .alloc_always },
         );
-        return Type{ .parsed = parsed };
+        return Type{ .allocator = allocator, .parsed = parsed };
     }
 
     pub fn loadCache(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !Type {
@@ -103,18 +83,19 @@ pub const Type = struct {
         try writer.flush();
     }
 
-    pub fn get(self: Type, version: []const u8, platform: Platform.Combination) ?Source {
-        const detail = self.parsed.value.map.get(version) orelse return null;
-        const target_name = @tagName(platform);
-        const info = @typeInfo(VersionDetail).@"struct";
-        inline for (info.field_names, info.field_types) |name, ty| {
-            if (std.mem.eql(u8, name, target_name)) {
-                if (ty == ?Source) {
-                    return @field(detail, name);
-                }
-            }
-        }
-        return null;
+    pub fn get(self: Type, version: []const u8, platform: []const u8) ?Source {
+        const ver_val = self.parsed.value.map.get(version) orelse return null;
+        if (ver_val != .object) return null;
+        const plat_val = ver_val.object.get(platform) orelse return null;
+        const parsed_src = std.json.parseFromValue(Source, self.allocator, plat_val, .{
+            .ignore_unknown_fields = true,
+        }) catch return null;
+        defer parsed_src.deinit();
+        return Source{
+            .tarball = self.allocator.dupe(u8, parsed_src.value.tarball) catch return null,
+            .shasum = self.allocator.dupe(u8, parsed_src.value.shasum) catch return null,
+            .size = parsed_src.value.size,
+        };
     }
 
     pub fn deinit(self: Type) void {
