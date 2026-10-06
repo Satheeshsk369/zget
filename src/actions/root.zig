@@ -177,6 +177,155 @@ pub fn ensureDir(io: std.Io, path: []const u8) !void {
     };
 }
 
+pub fn getActiveVersion(ctx: Context) !?[]const u8 {
+    const binDir = try ctx.binDir();
+    const builtin = @import("builtin");
+    const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+    const exe_path = try std.fs.path.join(ctx.arena, &.{ binDir, exe_name });
+
+    var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const len = std.Io.Dir.readLinkAbsolute(ctx.io, exe_path, &link_buf) catch return null;
+    const target = link_buf[0..len];
+
+    if (std.fs.path.dirname(target)) |dir| {
+        const ver = std.fs.path.basename(dir);
+        if (ver.len > 0 and !std.mem.eql(u8, ver, ".") and !std.mem.eql(u8, ver, "/")) {
+            return try ctx.arena.dupe(u8, ver);
+        }
+    }
+    return null;
+}
+
+pub fn runCurrent(ctx: Context) !void {
+    const stdout = std.Io.File.stdout();
+    if (try getActiveVersion(ctx)) |ver| {
+        const installDir = try ctx.versionDir(ver);
+        const builtin = @import("builtin");
+        const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+        const exe_path = try std.fs.path.join(ctx.arena, &.{ installDir, exe_name });
+        const line = try std.fmt.allocPrint(ctx.arena, "{s} ({s})\n", .{ ver, exe_path });
+        stdout.writeStreamingAll(ctx.io, line) catch {};
+    } else {
+        stdout.writeStreamingAll(ctx.io, "none\n") catch {};
+    }
+}
+
+pub fn runEnv(ctx: Context) !void {
+    std.debug.print(
+        \\.{{
+        \\    .ZIGUP = "{s}",
+        \\    .BIN = "{s}",
+        \\    .CONFIG = "{s}",
+        \\    .DATA = "{s}",
+        \\    .CACHE = "{s}",
+        \\}}
+        \\
+    , .{
+        std.process.executablePathAlloc(ctx.io, ctx.arena) catch "zigup",
+        try ctx.binDir(),
+        try configPath(ctx.arena, ctx.environMap),
+        try ctx.dataDir(),
+        try ctx.cacheDir(),
+    });
+}
+
+pub fn runClean(ctx: Context) !void {
+    const cache_dir = try ctx.cacheDir();
+    var dir = std.Io.Dir.openDirAbsolute(ctx.io, cache_dir, .{ .iterate = true }) catch |err| {
+        if (err == error.FileNotFound) {
+            std.log.info("Cache directory is already clean.", .{});
+            return;
+        }
+        return err;
+    };
+    defer dir.close(ctx.io);
+
+    var count: usize = 0;
+    var it = dir.iterate();
+    while (try it.next(ctx.io)) |entry| {
+        if (entry.kind == .file) {
+            dir.deleteFile(ctx.io, entry.name) catch continue;
+            count += 1;
+        } else if (entry.kind == .directory) {
+            dir.deleteTree(ctx.io, entry.name) catch continue;
+            count += 1;
+        }
+    }
+
+    std.log.info("Cleaned {d} items from cache ({s}).", .{ count, cache_dir });
+}
+
+pub fn runSet(ctx: Context, ver: []const u8) !void {
+    const binDir = try ctx.binDir();
+    const installDir = try ctx.versionDir(ver);
+
+    if (!dirExists(ctx, installDir)) {
+        std.log.err("Version {s} is not installed. Please run 'zigup install {s}' first.", .{ ver, ver });
+        return error.FileNotFound;
+    }
+
+    try ensureDir(ctx.io, binDir);
+
+    const builtin = @import("builtin");
+    if (comptime builtin.os.tag == .windows) {
+        const src_exe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig.exe" });
+        const dst_exe = try std.fs.path.join(ctx.arena, &.{ binDir, "zig.exe" });
+        var src_file = try std.Io.Dir.openFileAbsolute(ctx.io, src_exe, .{});
+        defer src_file.close(ctx.io);
+        var dst_file = try std.Io.Dir.createFileAbsolute(ctx.io, dst_exe, .{});
+        defer dst_file.close(ctx.io);
+        var f_buf: [65536]u8 = undefined;
+        var r = src_file.reader(ctx.io, &f_buf);
+        var w = dst_file.writer(ctx.io, &f_buf);
+        var chunk: [65536]u8 = undefined;
+        while (true) {
+            const n = try r.interface.readSliceShort(&chunk);
+            if (n == 0) break;
+            try w.interface.writeAll(chunk[0..n]);
+        }
+        try w.flush();
+    } else {
+        const targetExe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig" });
+        const targetRel = std.fs.path.relativeAlloc(ctx.arena, binDir, ctx.environMap, binDir, targetExe) catch targetExe;
+
+        var bd = try std.Io.Dir.openDirAbsolute(ctx.io, binDir, .{});
+        defer bd.close(ctx.io);
+        bd.deleteFile(ctx.io, "zig") catch |err| switch (err) {
+            error.FileNotFound => {},
+            else => return err,
+        };
+        try bd.symLink(ctx.io, targetRel, "zig", .{});
+    }
+    std.log.info("Set {s} as default.", .{ver});
+}
+
+pub fn runDelete(ctx: Context, ver: []const u8) !void {
+    const installDir = try ctx.versionDir(ver);
+    if (!dirExists(ctx, installDir)) return error.FileNotFound;
+
+    if (getActiveVersion(ctx) catch null) |active| {
+        if (std.mem.eql(u8, active, ver)) {
+            const binDir = try ctx.binDir();
+            var bd = std.Io.Dir.openDirAbsolute(ctx.io, binDir, .{}) catch null;
+            if (bd) |*d| {
+                defer d.close(ctx.io);
+                const builtin = @import("builtin");
+                const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+                d.deleteFile(ctx.io, exe_name) catch {};
+            }
+            std.log.warn("Version {s} was the active default; default link removed.", .{ver});
+        }
+    }
+
+    const data_dir = try ctx.dataDir();
+    var zd = try std.Io.Dir.openDirAbsolute(ctx.io, data_dir, .{});
+    defer zd.close(ctx.io);
+
+    try zd.deleteTree(ctx.io, ver);
+
+    std.log.info("Successfully deleted {s}.", .{ver});
+}
+
 pub fn run(cmd: Command, ctx: Context) ActionError!void {
     switch (cmd) {
         .help => @import("help.zig").run(),
@@ -184,7 +333,7 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
             const stdout = std.Io.File.stdout();
             stdout.writeStreamingAll(ctx.io, @import("options").version ++ "\n") catch {};
         },
-        .env => @import("env.zig").run(ctx) catch |e| switch (e) {
+        .env => runEnv(ctx) catch |e| switch (e) {
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.OutOfMemory => return error.OutOfMemory,
         },
@@ -206,14 +355,14 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
             error.MirrorNotFound => return error.MirrorNotFound,
             else => return error.HttpError,
         },
-        .set => |ver| @import("set.zig").run(ctx, ver) catch |e| switch (e) {
+        .set => |ver| runSet(ctx, ver) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.AccessDenied => return error.AccessDenied,
             error.FileNotFound => return error.FileNotFound,
             else => return error.FileNotFound,
         },
-        .delete => |ver| @import("delete.zig").run(ctx, ver) catch |e| switch (e) {
+        .delete => |ver| runDelete(ctx, ver) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.AccessDenied => return error.AccessDenied,
@@ -227,11 +376,11 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
             error.FileNotFound => return error.FileNotFound,
             else => return error.HttpError,
         },
-        .current => @import("current.zig").run(ctx) catch |e| switch (e) {
+        .current => runCurrent(ctx) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
         },
-        .clean => @import("clean.zig").run(ctx) catch |e| switch (e) {
+        .clean => runClean(ctx) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
             error.AccessDenied => return error.AccessDenied,
@@ -246,6 +395,7 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
         },
     }
 }
+
 pub fn parseCommand(args: []const []const u8) ?Command {
     if (args.len < 2) return .help;
     const cmd = args[1];

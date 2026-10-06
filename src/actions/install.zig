@@ -207,7 +207,7 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             }
         }
         if (should_set) {
-            try @import("set.zig").run(ctx, ver);
+            try action.runSet(ctx, ver);
         }
     }
 }

@@ -1,7 +1,6 @@
 const std = @import("std");
 const Schema = @import("../schema.zig");
 const action = @import("root.zig");
-const current = @import("current.zig");
 
 fn syncMirror(ctx: action.Context, mirror: []const u8) !void {
     const url = ctx.userConfig.getMirrorUrl(mirror) orelse {
@@ -85,7 +84,7 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
         };
         defer dir.close(ctx.io);
 
-        const active_ver = current.getActiveVersion(ctx) catch null;
+        const active_ver = action.getActiveVersion(ctx) catch null;
         const builtin = @import("builtin");
         const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
 
