@@ -174,9 +174,12 @@ fn ensureParentDir(
     }
 }
 
+const IO_BUFFER_SIZE = 128 * 1024;
+const MAX_WORKER_THREADS = 16;
+const POLL_INTERVAL_NS = 100 * std.time.ns_per_ms;
+
 pub const ZipFileEntry = struct {
     data_offset: u64,
-    compressed_size: u64,
     uncompressed_size: u64,
     compression_method: std.zip.CompressionMethod,
     rel_path: []const u8,
@@ -200,10 +203,10 @@ fn zipWorkerFn(ctx: *const ZipWorkerContext) void {
     var dest_dir = std.Io.Dir.openDirAbsolute(io, ctx.dest_path, .{}) catch return;
     defer dest_dir.close(io);
 
-    var f_buf: [131072]u8 = undefined;
+    var f_buf: [IO_BUFFER_SIZE]u8 = undefined;
     var file_reader = archive_file.reader(io, &f_buf);
 
-    var copy_buf: [131072]u8 = undefined;
+    var copy_buf: [IO_BUFFER_SIZE]u8 = undefined;
     var decompress_buf: [std.compress.flate.max_window_len]u8 = undefined;
 
     while (true) {
@@ -249,25 +252,18 @@ pub fn extractZipStripMultiThread(
     var dest_dir = try std.Io.Dir.openDirAbsolute(io, dest_path, .{});
     defer dest_dir.close(io);
 
-    var f_buf: [131072]u8 = undefined;
+    var f_buf: [IO_BUFFER_SIZE]u8 = undefined;
     var file_reader = archive_file.reader(io, &f_buf);
 
     var iter = try std.zip.Iterator.init(&file_reader);
     var filename_buf: [std.fs.max_path_bytes]u8 = undefined;
 
-    var dir_set = std.StringHashMap(void).init(gpa);
-    defer {
-        var it = dir_set.keyIterator();
-        while (it.next()) |k| gpa.free(k.*);
-        dir_set.deinit();
-    }
+    var arena_state = std.heap.ArenaAllocator.init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
 
+    var dir_set = std.StringHashMap(void).init(arena);
     var files = std.ArrayList(ZipFileEntry).empty;
-    defer {
-        for (files.items) |e| gpa.free(e.rel_path);
-        files.deinit(gpa);
-    }
-
     var total_uncompressed_bytes: u64 = 0;
 
     while (try iter.next()) |entry| {
@@ -292,8 +288,7 @@ pub fn extractZipStripMultiThread(
 
         if (dir_to_add) |dir_path| {
             if (dir_path.len > 0 and !dir_set.contains(dir_path)) {
-                const key = try gpa.dupe(u8, dir_path);
-                try dir_set.put(key, {});
+                try dir_set.put(try arena.dupe(u8, dir_path), {});
             }
         }
 
@@ -319,20 +314,17 @@ pub fn extractZipStripMultiThread(
 
         const data_offset = entry.file_offset + @sizeOf(std.zip.LocalFileHeader) + local_data_header_offset;
 
-        const path_dup = try gpa.dupe(u8, stripped_filename);
-        try files.append(gpa, .{
+        try files.append(arena, .{
             .data_offset = data_offset,
-            .compressed_size = entry.compressed_size,
             .uncompressed_size = entry.uncompressed_size,
             .compression_method = entry.compression_method,
-            .rel_path = path_dup,
+            .rel_path = try arena.dupe(u8, stripped_filename),
         });
         total_uncompressed_bytes += entry.uncompressed_size;
     }
 
     // Sort directories by path length to ensure parents are created before subdirectories
-    var dir_keys = try gpa.alloc([]const u8, dir_set.count());
-    defer gpa.free(dir_keys);
+    var dir_keys = try arena.alloc([]const u8, dir_set.count());
     var key_idx: usize = 0;
     var kit = dir_set.keyIterator();
     while (kit.next()) |k| {
@@ -351,7 +343,16 @@ pub fn extractZipStripMultiThread(
         dest_dir.createDirPath(io, dir_path) catch {};
     }
 
-    const num_threads = @min(std.Thread.getCpuCount() catch 4, 16);
+    // Schedule largest uncompressed files first so big files (e.g. zig.exe)
+    // decompress concurrently with thousands of smaller files
+    const fileSortFn = struct {
+        fn greaterThan(_: void, a: ZipFileEntry, b: ZipFileEntry) bool {
+            return a.uncompressed_size > b.uncompressed_size;
+        }
+    }.greaterThan;
+    std.mem.sort(ZipFileEntry, files.items, {}, fileSortFn);
+
+    const num_threads = @min(std.Thread.getCpuCount() catch 4, MAX_WORKER_THREADS);
 
     var next_idx = std.atomic.Value(usize).init(0);
     var completed_files = std.atomic.Value(usize).init(0);
@@ -367,8 +368,7 @@ pub fn extractZipStripMultiThread(
         .completed_bytes = &completed_bytes,
     };
 
-    var threads = try gpa.alloc(std.Thread, num_threads);
-    defer gpa.free(threads);
+    var threads = try arena.alloc(std.Thread, num_threads);
 
     for (0..num_threads) |i| {
         threads[i] = try std.Thread.spawn(.{}, zipWorkerFn, .{&worker_ctx});
@@ -389,10 +389,9 @@ pub fn extractZipStripMultiThread(
 
         if (done >= total_files) break;
 
-        // Sleep 100ms
         std.Io.Clock.Duration.sleep(.{
             .clock = .awake,
-            .raw = .fromNanoseconds(100 * std.time.ns_per_ms),
+            .raw = .fromNanoseconds(POLL_INTERVAL_NS),
         }, io) catch {};
     }
 
