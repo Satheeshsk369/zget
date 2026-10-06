@@ -31,7 +31,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.pie = true;
-    if (optimize != .debug) exe.lto = .full;
+    if (optimize != .debug and target.result.os.tag == .linux) {
+        exe.lto = .full;
+    }
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the app");

@@ -135,6 +135,8 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
     }
 
     {
+        const total_start = std.Io.Clock.now(.awake, ctx.io).nanoseconds;
+
         var idx = Schema.Index.init(ctx.gpa, ctx.io, ctx.environMap);
         defer idx.deinit();
 
@@ -171,7 +173,6 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             std.log.err("failed to download tarball. HTTP {s}", .{@tagName(dlResult.status)});
             return;
         }
-        const dl_secs = @as(f64, @floatFromInt(dlResult.duration)) / 1_000_000_000.0;
 
         minisign.verifyMinisign(minisig_buf.written(), &dlResult.digest, filename, zig_pubkey) catch |err| {
             std.log.err("Minisign verification failed: {s}", .{@errorName(err)});
@@ -197,7 +198,8 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
             try extract.extractTarXz(ctx.io, ctx.gpa, download_path, installDir);
         }
 
-        std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, dl_secs });
+        const total_secs = @as(f64, @floatFromInt(std.Io.Clock.now(.awake, ctx.io).nanoseconds - total_start)) / 1_000_000_000.0;
+        std.log.info("Successfully installed {s} in {d:.2}s.", .{ ver, total_secs });
 
         var should_set = false;
         for (ctx.args) |arg| {
