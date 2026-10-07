@@ -192,7 +192,7 @@ const ZipWorkerContext = struct {
     entries: []const ZipFileEntry,
     next_idx: *std.atomic.Value(usize),
     completed_files: *std.atomic.Value(usize),
-    completed_bytes: *std.atomic.Value(u64),
+    completed_bytes: *std.atomic.Value(usize),
 };
 
 fn zipWorkerFn(ctx: *const ZipWorkerContext) void {
@@ -236,7 +236,7 @@ fn zipWorkerFn(ctx: *const ZipWorkerContext) void {
         }
 
         _ = ctx.completed_files.fetchAdd(1, .monotonic);
-        _ = ctx.completed_bytes.fetchAdd(entry.uncompressed_size, .monotonic);
+        _ = ctx.completed_bytes.fetchAdd(@intCast(entry.uncompressed_size), .monotonic);
     }
 }
 
@@ -356,7 +356,7 @@ pub fn extractZipStripMultiThread(
 
     var next_idx = std.atomic.Value(usize).init(0);
     var completed_files = std.atomic.Value(usize).init(0);
-    var completed_bytes = std.atomic.Value(u64).init(0);
+    var completed_bytes = std.atomic.Value(usize).init(0);
 
     const worker_ctx = ZipWorkerContext{
         .io = io,
