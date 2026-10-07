@@ -379,10 +379,6 @@ pub fn run(cmd: Command, ctx: Context) ActionError!void {
             error.FileNotFound => return error.FileNotFound,
             else => return error.HttpError,
         },
-        .current => runCurrent(ctx) catch |e| switch (e) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
-        },
         .clean => runClean(ctx) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.HomeNotFound, error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
@@ -412,7 +408,6 @@ pub fn parseCommand(args: []const []const u8) ?Command {
         }
         return Command{ .update = "" };
     }
-    if (std.mem.eql(u8, cmd, "current") or std.mem.eql(u8, cmd, "c") or std.mem.eql(u8, cmd, "which")) return .current;
     if (std.mem.eql(u8, cmd, "clean") or std.mem.eql(u8, cmd, "cl")) return .clean;
     if (std.mem.eql(u8, cmd, "run") or std.mem.eql(u8, cmd, "r")) {
         if (args.len < 3) {

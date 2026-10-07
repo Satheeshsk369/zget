@@ -26,8 +26,7 @@ powershell -NoProfile -Command "Invoke-Expression (Invoke-RestMethod 'https://ra
   * `--url=<url>`: Specify a direct index JSON URL.
   * `-S`: Sync the index before installation.
 * **`set, s <TAG>`**: Set the default Zig version.
-* **`list, l [MIRROR]`**: List local installs, or remote versions if a mirror is specified (use `-S` to sync).
-* **`current, c`**: Show the active Zig version and path.
+* **`list, l [MIRROR]`**: List local installs, or remote versions if a mirror is specified (use `-S` to sync). Default version is marked with `*`.
 * **`run, r <TAG> [ARGS...]`**: Run a specific installed Zig version with arguments.
 * **`delete, d <TAG>`**: Delete an installed version.
 
@@ -113,10 +112,9 @@ powershell -NoProfile -Command "Invoke-Expression (Invoke-RestMethod 'https://ra
   zget -S list mach         # sync mach index and list its versions
   ```
 
-* Check active version and environment paths:
+* Check environment paths:
 
   ```bash
-  zget current
   zget env
   ```
 
