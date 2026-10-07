@@ -23,26 +23,26 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Cache Zig & zigup downloads
+      - name: Cache Zig & zget downloads
         uses: actions/cache@v4
         with:
           path: |
             ~/.local/share/zig
-            ~/.cache/zigup
+            ~/.cache/zget
             ~/.local/bin
           key: ${{ runner.os }}-zig-0.17.0-${{ hashFiles('**/build.zig.zon') }}
           restore-keys: |
             ${{ runner.os }}-zig-0.17.0-
 
-      - name: Install zigup & Zig
+      - name: Install zget & Zig
         run: |
           mkdir -p $HOME/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          if ! command -v zigup >/dev/null 2>&1; then
-            curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/v0.3.9/install.sh | sh
+          if ! command -v zget >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zget/v0.4.0/install.sh | sh
           fi
-          $HOME/.local/bin/zigup install 0.17.0
-          $HOME/.local/bin/zigup set 0.17.0
+          $HOME/.local/bin/zget install 0.17.0
+          $HOME/.local/bin/zget set 0.17.0
           zig version
         shell: bash
 
