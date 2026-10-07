@@ -1,35 +1,48 @@
-# zigup
-> zig version manager.
+# zget
+> Zig version manager.
 
 ## Install
 
-### Linux & macOS 
+### Linux & macOS
 
 ```bash
-curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zget/main/install.sh | sh
 ```
-*Note: Make sure to add `~/.local/bin` to your shell profile `PATH` (e.g. `~/.bashrc`, `~/.zshrc` or `~/.profile`).*
+*Note: Make sure to add `~/.local/bin` to your shell profile `PATH` (such as `~/.bashrc`, `~/.zshrc`, or `~/.profile`).*
 
-### Windows Powershell
+### Windows PowerShell
 
 ```powershell
-powershell -NoProfile -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/Satheeshsk369/zigup/main/install.ps1')"
+powershell -NoProfile -Command "Invoke-Expression (Invoke-RestMethod 'https://raw.githubusercontent.com/Satheeshsk369/zget/main/install.ps1')"
 ```
 
 ## Commands
 
-* **`install <TAG>`** (alias **`i`**): Downloads and installs a Zig version. Skips download if already installed. Use `-S` to sync and select from mirrors, `-mirror=<name>` for specific mirrors, or `-url=<url>` for direct links.
-* **`set <TAG>`** (alias **`s`**): Sets an installed Zig version as the default/active version.
-* **`list [MIRROR]`** (alias **`l`**): Lists locally installed versions (or cached remote versions if a mirror name is provided). Use `-S` to sync.
-* **`delete <TAG>`** (alias **`d`**): Uninstalls a local Zig version.
-* **`update`** (alias **`up`**): Updates `zigup` to the latest release binary.
-* **`env`** (alias **`e`**): Checks if the `~/.local/bin` directory is configured in your system `PATH`.
-* **`help`** (alias **`h`**): Prints the help message.
-* **`version`** (alias **`v`**): Prints the zigup tool version.
+### Manage Zig versions
+
+* **`install, i <TAG>`**: Install a Zig version. Skips download if already installed.
+  * `--set`: Set this version as default after installation.
+  * `--mirror=<name>`: Select an index mirror configured in `config.zon`.
+  * `--url=<url>`: Specify a direct index JSON URL.
+  * `-S`: Sync the index before installation.
+* **`set, s <TAG>`**: Set the default Zig version.
+* **`list, l [MIRROR]`**: List local installs, or remote versions if a mirror is specified (use `-S` to sync).
+* **`current, c`**: Show the active Zig version and path.
+* **`run, r <TAG> [ARGS...]`**: Run a specific installed Zig version with arguments.
+* **`delete, d <TAG>`**: Delete an installed version.
+
+### Maintain zget
+
+* **`update, up [TAG]`**: Update the zget binary (optionally to a specific version).
+* **`clean, cl`**: Delete cache and downloads.
+* **`env, e`**: Print configuration and environment paths.
+* **`version, v`**: Print the zget tool version.
+* **`help, h`**: Print help message.
 
 ## Configuration
 
-`zigup` automatically generates a configuration file at `~/.config/zigup/config.zon` (or `%APPDATA%\zigup\config.zon` on Windows) on its first run. You can add new custom index mirrors directly to this list:
+`zget` automatically generates a configuration file at `~/.config/zget/config.zon` (or `%APPDATA%\zget\config.zon` on Windows) on first run:
+
 ```zig
 .{
     .mirrors = .{
@@ -41,64 +54,80 @@ powershell -NoProfile -Command "Invoke-Expression (Invoke-RestMethod 'https://ra
 }
 ```
 
-## Usage
+## Usage Examples
 
-* Install a version (this only downloads/extracts it):
+* Install a version:
 
   ```bash
-  zigup install 0.16.0        # downloads and installs 0.16.0
+  zget install 0.16.0
   ```
 
-* Set an installed version as your active default:
+* Install and set as default immediately:
 
   ```bash
-  zigup set 0.16.0            # sets 0.16.0 as active default
+  zget install 0.16.0 --set
   ```
 
-* Switch between installed versions by running `set`:
+* Set an installed version as the default:
 
   ```bash
-  zigup set master            # switches active zig to master (if already installed)
-  zigup set 0.16.0            # switches back to 0.16.0
+  zget set 0.16.0
   ```
 
-* Manage mirrors in `config.zon`, then use `-mirror`:
+* Switch between installed versions:
 
   ```bash
-  zigup install 0.16.0 -mirror=mach   # install from mach mirror (skips if already present)
-  zigup delete 0.16.0                  # delete if you want a clean reinstall from another mirror
-  zigup install 0.16.0 -mirror=mach   # fresh install from mach
+  zget set master
+  zget set 0.16.0
   ```
 
-* Use `-url` to point at a custom index without touching `config.zon`:
+* Run a specific version directly without setting it as default:
 
   ```bash
-  zigup install 0.16.0 -url="https://pkg.hexops.org/zig/index.json"
+  zget run 0.16.0 version
   ```
 
-* `master` tracks HEAD — always sync the index before installing:
+* Install from a configured mirror:
 
   ```bash
-  zigup -S install master              # sync index, then download latest master
-  zigup -S install master -mirror=mach
+  zget install 0.16.0 --mirror=mach
   ```
 
-* List versions:
+* Install using a custom index URL:
 
   ```bash
-  zigup list                 # locally installed versions
-  zigup list ziglang         # remote versions from ziglang mirror cache
-  zigup -S list mach         # sync mach index and list its versions
+  zget install 0.16.0 --url="https://pkg.hexops.org/zig/index.json"
   ```
 
-* View the paths zigup uses:
+* Sync the index first and install latest `master`:
 
   ```bash
-  zigup env
+  zget -S install master
   ```
 
-* Self-update zigup:
+* List installed and remote versions:
 
   ```bash
-  zigup update
+  zget list                 # local versions
+  zget list ziglang         # cached remote versions from ziglang mirror
+  zget -S list mach         # sync mach index and list its versions
+  ```
+
+* Check active version and environment paths:
+
+  ```bash
+  zget current
+  zget env
+  ```
+
+* Clean cached downloads:
+
+  ```bash
+  zget clean
+  ```
+
+* Self-update zget:
+
+  ```bash
+  zget update
   ```

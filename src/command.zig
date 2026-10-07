@@ -17,19 +17,20 @@ pub const Command = union(enum) {
 pub const Entry = struct {
     verb: []const u8,
     argLabel: ?[]const u8,
+    alias: ?[]const u8,
     description: []const u8,
 };
 
 pub const commands: []const Entry = &.{
-    .{ .verb = "help", .argLabel = null, .description = "Print this message" },
-    .{ .verb = "version", .argLabel = null, .description = "Print zigup tool version" },
-    .{ .verb = "env", .argLabel = null, .description = "Print configuration and environment paths" },
-    .{ .verb = "current", .argLabel = null, .description = "Show currently active Zig version and path" },
-    .{ .verb = "clean", .argLabel = null, .description = "Clean cached indexes and temporary downloads" },
-    .{ .verb = "install", .argLabel = "<TAG>", .description = "Download and install a version (--set to activate)" },
-    .{ .verb = "delete", .argLabel = "<TAG>", .description = "Delete an installed version" },
-    .{ .verb = "list", .argLabel = "<MIRROR>", .description = "List local installs (or remote versions if mirror is specified)" },
-    .{ .verb = "set", .argLabel = "<TAG>", .description = "Set an installed version as the default" },
-    .{ .verb = "run", .argLabel = "<TAG> [ARGS...]", .description = "Run a specific installed Zig version" },
-    .{ .verb = "update", .argLabel = "[TAG]", .description = "Update zigup tool (optionally to a specific version)" },
+    .{ .verb = "install", .argLabel = "<TAG>", .alias = "i", .description = "Install a Zig version" },
+    .{ .verb = "set", .argLabel = "<TAG>", .alias = "s", .description = "Set the default version" },
+    .{ .verb = "list", .argLabel = "[MIRROR]", .alias = "l", .description = "List local or remote versions" },
+    .{ .verb = "current", .argLabel = null, .alias = "c", .description = "Show the active version" },
+    .{ .verb = "run", .argLabel = "<TAG> [ARGS...]", .alias = "r", .description = "Run a version with arguments" },
+    .{ .verb = "delete", .argLabel = "<TAG>", .alias = "d", .description = "Delete an installed version" },
+    .{ .verb = "update", .argLabel = "[TAG]", .alias = "up", .description = "Update the zget binary" },
+    .{ .verb = "clean", .argLabel = null, .alias = "cl", .description = "Delete cache and downloads" },
+    .{ .verb = "env", .argLabel = null, .alias = "e", .description = "Print paths and environment" },
+    .{ .verb = "version", .argLabel = null, .alias = "v", .description = "Print the zget version" },
+    .{ .verb = "help", .argLabel = null, .alias = "h", .description = "Print this message" },
 };

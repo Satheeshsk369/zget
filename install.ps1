@@ -5,11 +5,11 @@ $ErrorActionPreference = "Stop"
 
 switch ($env:PROCESSOR_ARCHITECTURE) { "AMD64" { $arch = "x86_64" } "ARM64" { $arch = "aarch64" } "x86" { $arch = "x86" } default { throw "Unsupported architecture: $($env:PROCESSOR_ARCHITECTURE)" } }
 
-$releases = Invoke-RestMethod -Uri "https://api.github.com/repos/Satheeshsk369/zigup/releases" -Headers @{ "User-Agent" = "zigup-installer" }
+$releases = Invoke-RestMethod -Uri "https://api.github.com/repos/Satheeshsk369/zget/releases" -Headers @{ "User-Agent" = "zget-installer" }
 if ($releases -is [string]) { $releases = ConvertFrom-Json $releases }
 
 $tag = $null
-$binaryName = "zigup-$arch-windows.exe"
+$binaryName = "zget-$arch-windows.exe"
 
 foreach ($rel in $releases) {
     if ($null -ne $rel.assets) {
@@ -25,13 +25,13 @@ foreach ($rel in $releases) {
 
 if (-not $tag) { throw "Failed to find a release tag with compiled binary: $binaryName" }
 
-$url    = "https://github.com/Satheeshsk369/zigup/releases/download/$tag/$binaryName"
+$url    = "https://github.com/Satheeshsk369/zget/releases/download/$tag/$binaryName"
 
-$binDir    = Join-Path $env:LOCALAPPDATA "zigup\bin"
-$dataDir   = Join-Path $env:LOCALAPPDATA "zigup"
-$configDir = Join-Path $env:APPDATA "zigup"
-$cacheDir  = Join-Path $env:LOCALAPPDATA "zigup\cache"
-$dest      = Join-Path $binDir "zigup.exe"
+$binDir    = Join-Path $env:LOCALAPPDATA "zget\bin"
+$dataDir   = Join-Path $env:LOCALAPPDATA "zget"
+$configDir = Join-Path $env:APPDATA "zget"
+$cacheDir  = Join-Path $env:LOCALAPPDATA "zget\cache"
+$dest      = Join-Path $binDir "zget.exe"
 
 New-Item -ItemType Directory -Path $binDir -Force | Out-Null
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
@@ -43,13 +43,13 @@ if (Test-Path $dest) {
     try {
         $installedVer = (& $dest version 2>&1 | Out-String).Trim().TrimStart('v')
         if ($installedVer -and ($installedVer -eq $cleanTag)) {
-            Write-Host "zigup is already up to date ($installedVer)"
+            Write-Host "zget is already up to date ($installedVer)"
             exit 0
         }
     } catch {}
 }
 
-Write-Host "Downloading zigup $tag ($arch)"
+Write-Host "Downloading zget $tag ($arch)"
 Invoke-WebRequest -Uri $url -OutFile $dest
 
 $rawUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -82,4 +82,4 @@ if ($userPathList -notcontains $resolvedBinDir) {
     $result = [UIntPtr]::Zero
     $type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$result) | Out-Null
 }
-Write-Host "zigup installed. Open a new terminal or run: zigup help"
+Write-Host "zget installed. Open a new terminal or run: zget help"

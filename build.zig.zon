@@ -1,7 +1,7 @@
 .{
-    .name = .zigup,
+    .name = .zget,
     .version = "0.4.0",
-    .fingerprint = 0x7cbb96d030699973,
+    .fingerprint = 0x27bc6886864a4cde,
     .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{

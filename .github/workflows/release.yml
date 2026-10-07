@@ -23,26 +23,26 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Cache Zig & zigup downloads
+      - name: Cache Zig & zget downloads
         uses: actions/cache@v4
         with:
           path: |
             ~/.local/share/zig
-            ~/.cache/zigup
+            ~/.cache/zget
             ~/.local/bin
           key: ${{ runner.os }}-zig-0.17.0-${{ hashFiles('**/build.zig.zon') }}
           restore-keys: |
             ${{ runner.os }}-zig-0.17.0-
 
-      - name: Install zigup & Zig
+      - name: Install zget & Zig
         run: |
           mkdir -p $HOME/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          if ! command -v zigup >/dev/null 2>&1; then
-            curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zigup/${{ github.ref_name }}/install.sh | sh
+          if ! command -v zget >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/Satheeshsk369/zget/${{ github.ref_name }}/install.sh | sh
           fi
-          $HOME/.local/bin/zigup install 0.17.0
-          $HOME/.local/bin/zigup set 0.17.0
+          $HOME/.local/bin/zget install 0.17.0
+          $HOME/.local/bin/zget set 0.17.0
           zig version
         shell: bash
 
@@ -53,19 +53,19 @@ jobs:
           for arch in x86 x86_64 aarch64; do
             echo "Building Linux $arch"
             zig build -Doptimize=ReleaseFast -Dtarget=$arch-linux
-            cp zig-out/bin/zigup dist/zigup-$arch-linux
+            cp zig-out/bin/zget dist/zget-$arch-linux
           done
 
           for arch in x86_64 aarch64; do
             echo "Building macOS $arch"
             zig build -Doptimize=ReleaseFast -Dtarget=$arch-macos
-            cp zig-out/bin/zigup dist/zigup-$arch-macos
+            cp zig-out/bin/zget dist/zget-$arch-macos
           done
 
           for arch in x86 x86_64 aarch64; do
             echo "Building Windows $arch"
             zig build -Doptimize=ReleaseFast -Dtarget=$arch-windows
-            cp zig-out/bin/zigup.exe dist/zigup-$arch-windows.exe
+            cp zig-out/bin/zget.exe dist/zget-$arch-windows.exe
           done
         shell: bash
 

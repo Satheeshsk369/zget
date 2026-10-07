@@ -20,8 +20,8 @@ if [ "$OS" = "macos" ] && [ "$ARCH" = "x86" ]; then
   echo "macOS 32-bit is unsupported" && exit 1
 fi
 
-REPOS_URL="https://api.github.com/repos/Satheeshsk369/zigup/releases"
-BINARY_NAME="zigup-${ARCH}-${OS}"
+REPOS_URL="https://api.github.com/repos/Satheeshsk369/zget/releases"
+BINARY_NAME="zget-${ARCH}-${OS}"
 
 RELEASES_JSON=$(curl -sSfL "$REPOS_URL")
 if [ -z "$RELEASES_JSON" ]; then
@@ -46,26 +46,26 @@ if [ -z "$TAG" ]; then
   echo "Failed to find a release tag with compiled binary: $BINARY_NAME" && exit 1
 fi
 
-DOWNLOAD_URL="https://github.com/Satheeshsk369/zigup/releases/download/${TAG}/${BINARY_NAME}"
+DOWNLOAD_URL="https://github.com/Satheeshsk369/zget/releases/download/${TAG}/${BINARY_NAME}"
 BIN_DIR="${XDG_DATA_HOME:-$HOME/.local}/bin"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zig"
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zigup"
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zigup"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zget"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/zget"
 
 mkdir -p "$BIN_DIR" "$DATA_DIR" "$CONFIG_DIR" "$CACHE_DIR"
 
 CLEAN_TAG="${TAG#v}"
-if [ -x "$BIN_DIR/zigup" ]; then
-  CURRENT_INSTALLED="$("$BIN_DIR/zigup" version 2>&1 | tr -d '[:space:]' || true)"
+if [ -x "$BIN_DIR/zget" ]; then
+  CURRENT_INSTALLED="$("$BIN_DIR/zget" version 2>&1 | tr -d '[:space:]' || true)"
   CURRENT_INSTALLED="${CURRENT_INSTALLED#v}"
   if [ -n "$CURRENT_INSTALLED" ] && [ "$CURRENT_INSTALLED" = "$CLEAN_TAG" ]; then
-    echo "zigup is already up to date (${CURRENT_INSTALLED})"
+    echo "zget is already up to date (${CURRENT_INSTALLED})"
     exit 0
   fi
 fi
 
-echo "Downloading zigup for ${OS}-${ARCH} (tag ${TAG})"
-curl -sSfL "$DOWNLOAD_URL" -o "$BIN_DIR/zigup"
-chmod +x "$BIN_DIR/zigup"
+echo "Downloading zget for ${OS}-${ARCH} (tag ${TAG})"
+curl -sSfL "$DOWNLOAD_URL" -o "$BIN_DIR/zget"
+chmod +x "$BIN_DIR/zget"
 
-echo "Successfully installed zigup to $BIN_DIR/zigup"
+echo "Successfully installed zget to $BIN_DIR/zget"

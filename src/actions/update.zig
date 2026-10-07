@@ -6,19 +6,19 @@ const dns = @import("../dns.zig");
 pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
     const builtin = @import("builtin");
     const suffix = if (builtin.os.tag == .windows) ".exe" else "";
-    const expected_asset_name = try std.fmt.allocPrint(ctx.arena, "zigup-{s}{s}", .{ action.targetKey(), suffix });
+    const expected_asset_name = try std.fmt.allocPrint(ctx.arena, "zget-{s}{s}", .{ action.targetKey(), suffix });
 
     var client = std.http.Client{ .allocator = ctx.gpa, .io = ctx.io };
     client.initDefaultProxies(ctx.gpa, ctx.environMap) catch {};
     defer client.deinit();
     const extra_headers = &[_]std.http.Header{
-        .{ .name = "User-Agent", .value = "zigup-client" },
+        .{ .name = "User-Agent", .value = "zget-client" },
     };
 
     var httpBuf = std.Io.Writer.Allocating.init(ctx.gpa);
     defer httpBuf.deinit();
 
-    const uri = try std.Uri.parse("https://api.github.com/repos/Satheeshsk369/zigup/releases");
+    const uri = try std.Uri.parse("https://api.github.com/repos/Satheeshsk369/zget/releases");
     std.log.info("Checking for updates from GitHub", .{});
     const status = try dns.fetch(&client, uri, extra_headers, &httpBuf.writer);
 
@@ -66,7 +66,7 @@ pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
         if (std.mem.startsWith(u8, clean_req, "v")) clean_req = clean_req[1..];
 
         if (std.mem.eql(u8, clean_req, clean_current)) {
-            std.log.info("zigup is already at version {s}.", .{current_ver});
+            std.log.info("zget is already at version {s}.", .{current_ver});
             return;
         }
 
@@ -112,7 +112,7 @@ pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
         }
 
         if (std.mem.eql(u8, clean_release, clean_current)) {
-            std.log.info("zigup is already up to date ({s}).", .{current_ver});
+            std.log.info("zget is already up to date ({s}).", .{current_ver});
             return;
         }
 
@@ -121,7 +121,7 @@ pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
 
         if (parsed_release != null and parsed_current != null) {
             if (parsed_release.?.order(parsed_current.?) != .gt) {
-                std.log.info("zigup is already up to date ({s}).", .{current_ver});
+                std.log.info("zget is already up to date ({s}).", .{current_ver});
                 return;
             }
         }
@@ -130,8 +130,8 @@ pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
     const url = download_url.?;
 
     const bin_dir = try ctx.binDir();
-    const exe_name = if (comptime builtin.os.tag == .windows) "zigup.exe" else "zigup";
-    const tmp_name = if (comptime builtin.os.tag == .windows) "zigup.tmp.exe" else "zigup.tmp";
+    const exe_name = if (comptime builtin.os.tag == .windows) "zget.exe" else "zget";
+    const tmp_name = if (comptime builtin.os.tag == .windows) "zget.tmp.exe" else "zget.tmp";
     const temp_exe_path = try std.fs.path.join(ctx.arena, &.{ bin_dir, tmp_name });
 
     std.log.info("Downloading new binary from {s}", .{url});
@@ -172,9 +172,9 @@ pub fn run(ctx: action.Context, requested_tag: []const u8) !void {
     bd.deleteFile(ctx.io, exe_name) catch {};
     success = true;
     bd.rename(tmp_name, bd, exe_name, ctx.io) catch |err| {
-        std.log.err("failed to replace zigup binary: {s}", .{@errorName(err)});
+        std.log.err("failed to replace zget binary: {s}", .{@errorName(err)});
         return err;
     };
 
-    std.log.info("Successfully updated zigup in {d:.2}s.", .{dl_secs});
+    std.log.info("Successfully updated zget in {d:.2}s.", .{dl_secs});
 }

@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) void {
     options.addOption([]const u8, "version", if (version.len > 0) version else "0.0.0");
 
     const exe = b.addExecutable(.{
-        .name = "zigup",
+        .name = "zget",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,

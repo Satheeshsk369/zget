@@ -10,7 +10,7 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
     if (std.Io.Dir.openFileAbsolute(ctx.io, exe_path, .{})) |*f| {
         f.close(ctx.io);
     } else |_| {
-        std.log.err("Version {s} is not installed. Run 'zigup install {s}' first.", .{ ver, ver });
+        std.log.err("Version {s} is not installed. Run 'zget install {s}' first.", .{ ver, ver });
         return error.FileNotFound;
     }
 

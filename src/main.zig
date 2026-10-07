@@ -68,9 +68,9 @@ pub fn main(init: std.process.Init) void {
 
     const cmd = action.parseCommand(argslist) orelse {
         if (argslist.len < 2) {
-            std.log.err("No command provided.\nUse 'zigup help' for usage details.", .{});
+            std.log.err("No command provided.\nUse 'zget help' for usage details.", .{});
         } else {
-            std.log.err("Unknown command: {s}.\nUse 'zigup help' for usage details.", .{argslist[1]});
+            std.log.err("Unknown command: {s}.\nUse 'zget help' for usage details.", .{argslist[1]});
         }
         std.process.exit(1);
     };

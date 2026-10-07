@@ -33,15 +33,15 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
     var url_opt: ?[]const u8 = null;
 
     for (ctx.args) |arg| {
-        if (std.mem.startsWith(u8, arg, "-mirror=")) {
-            mirror_opt = arg["-mirror=".len..];
-        } else if (std.mem.startsWith(u8, arg, "-url=")) {
-            url_opt = arg["-url=".len..];
+        if (std.mem.startsWith(u8, arg, "--mirror=")) {
+            mirror_opt = arg["--mirror=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--url=")) {
+            url_opt = arg["--url=".len..];
         }
     }
 
     if (mirror_opt != null and url_opt != null) {
-        std.log.err("cannot specify both -mirror and -url", .{});
+        std.log.err("cannot specify both --mirror and --url", .{});
         return;
     }
 
@@ -80,7 +80,7 @@ pub fn run(ctx: action.Context, ver: []const u8) !void {
                         break :blk try Schema.Type.parse(ctx.gpa, httpBuf.written());
                     }
                 }
-                std.log.err("failed to load cached index for mirror '{s}': {s}\nUse -S flag (e.g. 'zigup -S install {s}') to sync the cache.", .{ mirror_name, @errorName(err), ver });
+                std.log.err("failed to load cached index for mirror '{s}': {s}\nUse -S flag (e.g. 'zget -S install {s}') to sync the cache.", .{ mirror_name, @errorName(err), ver });
                 return error.FileNotFound;
             };
         }
@@ -196,7 +196,7 @@ pub fn runFromSource(ctx: action.Context, ver: []const u8, src: Schema.Source) !
 
         var should_set = false;
         for (ctx.args) |arg| {
-            if (std.mem.eql(u8, arg, "--set") or std.mem.eql(u8, arg, "-s")) {
+            if (std.mem.eql(u8, arg, "--set")) {
                 should_set = true;
                 break;
             }

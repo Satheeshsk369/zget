@@ -32,14 +32,14 @@ pub fn getPlatformPath(comptime folder: Folder) []const []const u8 {
     const builtin = @import("builtin");
     return switch (builtin.os.tag) {
         .windows => switch (folder) {
-            .config => &.{ "APPDATA", "zigup", "config.zon" },
-            .cache => &.{ "LOCALAPPDATA", "zigup", "cache" },
-            .data => &.{ "LOCALAPPDATA", "zigup" },
-            .bin => &.{ "LOCALAPPDATA", "zigup", "bin" },
+            .config => &.{ "APPDATA", "zget", "config.zon" },
+            .cache => &.{ "LOCALAPPDATA", "zget", "cache" },
+            .data => &.{ "LOCALAPPDATA", "zget" },
+            .bin => &.{ "LOCALAPPDATA", "zget", "bin" },
         },
         else => switch (folder) {
-            .config => &.{ "XDG_CONFIG_HOME", ".config", "zigup", "config.zon" },
-            .cache => &.{ "XDG_CACHE_HOME", ".cache", "zigup" },
+            .config => &.{ "XDG_CONFIG_HOME", ".config", "zget", "config.zon" },
+            .cache => &.{ "XDG_CACHE_HOME", ".cache", "zget" },
             .data => &.{ "XDG_DATA_HOME", ".local", "share", "zig" },
             .bin => &.{ "HOME", ".local", "bin" },
         },
@@ -226,7 +226,7 @@ pub fn runCurrent(ctx: Context) !void {
 pub fn runEnv(ctx: Context) !void {
     std.debug.print(
         \\.{{
-        \\    .ZIGUP = "{s}",
+        \\    .ZGET = "{s}",
         \\    .BIN = "{s}",
         \\    .CONFIG = "{s}",
         \\    .DATA = "{s}",
@@ -234,7 +234,7 @@ pub fn runEnv(ctx: Context) !void {
         \\}}
         \\
     , .{
-        std.process.executablePathAlloc(ctx.io, ctx.arena) catch "zigup",
+        std.process.executablePathAlloc(ctx.io, ctx.arena) catch "zget",
         try ctx.binDir(),
         try configPath(ctx.arena, ctx.environMap),
         try ctx.dataDir(),
@@ -273,47 +273,31 @@ pub fn runSet(ctx: Context, ver: []const u8) !void {
     const installDir = try ctx.versionDir(ver);
 
     if (!dirExists(ctx, installDir)) {
-        std.log.err("Version {s} is not installed. Please run 'zigup install {s}' first.", .{ ver, ver });
+        std.log.err("Version {s} is not installed. Please run 'zget install {s}' first.", .{ ver, ver });
         return error.FileNotFound;
     }
 
     try ensureDir(ctx.io, binDir);
 
     const builtin = @import("builtin");
-    if (comptime builtin.os.tag == .windows) {
-        const src_exe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig.exe" });
-        const dst_exe = try std.fs.path.join(ctx.arena, &.{ binDir, "zig.exe" });
-        var src_file = try std.Io.Dir.openFileAbsolute(ctx.io, src_exe, .{});
-        defer src_file.close(ctx.io);
-        var dst_file = try std.Io.Dir.createFileAbsolute(ctx.io, dst_exe, .{});
-        defer dst_file.close(ctx.io);
-        var f_buf: [65536]u8 = undefined;
-        var r = src_file.reader(ctx.io, &f_buf);
-        var w = dst_file.writer(ctx.io, &f_buf);
-        var chunk: [65536]u8 = undefined;
-        while (true) {
-            const n = try r.interface.readSliceShort(&chunk);
-            if (n == 0) break;
-            try w.interface.writeAll(chunk[0..n]);
-        }
-        try w.flush();
+    const exe_name = if (comptime builtin.os.tag == .windows) "zig.exe" else "zig";
+    const targetExe = try std.fs.path.join(ctx.arena, &.{ installDir, exe_name });
+    const targetRel = std.fs.path.relativeAlloc(ctx.arena, binDir, ctx.environMap, binDir, targetExe) catch targetExe;
 
-        // Write active version marker so 'zigup current' can resolve on Windows
+    var bd = try std.Io.Dir.openDirAbsolute(ctx.io, binDir, .{});
+    defer bd.close(ctx.io);
+    bd.deleteFile(ctx.io, exe_name) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+    try bd.symLink(ctx.io, targetRel, exe_name, .{});
+
+    if (comptime builtin.os.tag == .windows) {
+        // Write active version marker so 'zigup current' can also resolve reliably
         const active_file_path = try std.fs.path.join(ctx.arena, &.{ binDir, "active_version" });
         var af = try std.Io.Dir.createFileAbsolute(ctx.io, active_file_path, .{ .truncate = true });
         defer af.close(ctx.io);
         try af.writeStreamingAll(ctx.io, ver);
-    } else {
-        const targetExe = try std.fs.path.join(ctx.arena, &.{ installDir, "zig" });
-        const targetRel = std.fs.path.relativeAlloc(ctx.arena, binDir, ctx.environMap, binDir, targetExe) catch targetExe;
-
-        var bd = try std.Io.Dir.openDirAbsolute(ctx.io, binDir, .{});
-        defer bd.close(ctx.io);
-        bd.deleteFile(ctx.io, "zig") catch |err| switch (err) {
-            error.FileNotFound => {},
-            else => return err,
-        };
-        try bd.symLink(ctx.io, targetRel, "zig", .{});
     }
     std.log.info("Set {s} as default.", .{ver});
 }
@@ -429,7 +413,7 @@ pub fn parseCommand(args: []const []const u8) ?Command {
         return Command{ .update = "" };
     }
     if (std.mem.eql(u8, cmd, "current") or std.mem.eql(u8, cmd, "c") or std.mem.eql(u8, cmd, "which")) return .current;
-    if (std.mem.eql(u8, cmd, "clean")) return .clean;
+    if (std.mem.eql(u8, cmd, "clean") or std.mem.eql(u8, cmd, "cl")) return .clean;
     if (std.mem.eql(u8, cmd, "run") or std.mem.eql(u8, cmd, "r")) {
         if (args.len < 3) {
             std.log.err("command 'run' requires a version tag", .{});

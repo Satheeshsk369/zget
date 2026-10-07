@@ -44,7 +44,7 @@ pub fn run(ctx: action.Context, mirror_arg: []const u8) !void {
 
         const cache_path = try ctx.cacheFile(m);
         const schema = Schema.Type.loadCache(ctx.gpa, ctx.io, cache_path) catch |err| {
-            std.log.err("failed to load cached index for mirror '{s}': {s}\nUse -S flag (e.g. 'zigup -S list {s}') to sync the cache.", .{ m, @errorName(err), m });
+            std.log.err("failed to load cached index for mirror '{s}': {s}\nUse -S flag (e.g. 'zget -S list {s}') to sync the cache.", .{ m, @errorName(err), m });
             return;
         };
         defer schema.deinit();
